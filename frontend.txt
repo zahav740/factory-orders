@@ -1,0 +1,4007 @@
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\App.css
+.App {
+  text-align: center;
+}
+
+.App-logo {
+  height: 40vmin;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .App-logo {
+    animation: App-logo-spin infinite 20s linear;
+  }
+}
+
+.App-header {
+  background-color: #282c34;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: calc(10px + 2vmin);
+  color: white;
+}
+
+.App-link {
+  color: #61dafb;
+}
+
+@keyframes App-logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\App.test.tsx
+import React from 'react';
+import OrdersList from './components/OrdersList';
+import OrderForm from './components/OrderForm';
+
+function App() {
+  return (
+    <div className="p-8">
+      <h1 className="text-3xl font-bold mb-6">Factory Orders</h1>
+      <OrderForm />
+      {/* <OrdersList /> */}
+    </div>
+  );
+}
+
+export default App;
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\App.tsx
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import HomePage from './components/HomePage';
+import Navbar from './components/Navbar';
+import CalculationPage from './components/CalculationPage';
+import MachineScheduleCalendar from './components/MachineScheduleCalendar';
+import OrdersPage from './components/OrdersPage';
+
+// Главный роутинг с навбаром
+const App: React.FC = () => {
+  return (
+    <Router>
+      <Navbar />
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/orders" element={<OrdersPage />} />
+        <Route path="/calculation" element={<CalculationPage />} />
+        <Route path="/calendar" element={<MachineScheduleCalendar />} />
+        <Route path="/about" element={<div className="min-h-screen bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white p-8"><h1 className="text-4xl font-bold mb-8">О системе</h1><p>Система Factory Orders предназначена для управления заказами на производстве.</p></div>} />
+      </Routes>
+    </Router>
+  );
+};
+
+export default App;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\index.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\index.tsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import './index.css';
+import App from './App';
+import './styles/globals.css';
+
+const root = ReactDOM.createRoot(
+  document.getElementById('root') as HTMLElement
+);
+
+root.render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\react-app-env.d.ts
+/// <reference types="react-scripts" />
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\setupTests.ts
+// jest-dom adds custom jest matchers for asserting on DOM nodes.
+// allows you to do things like:
+// expect(element).toHaveTextContent(/react/i)
+// learn more: https://github.com/testing-library/jest-dom
+import '@testing-library/jest-dom';
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\api\ordersApi.ts
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+
+export interface Operation {
+  opNumber: number;
+  opTime: number;
+  opAxes: string;
+  assignedMachine?: string;  // Добавлено
+  startDate?: string;        // Добавлено
+  endDate?: string;
+}
+
+// Обновленный интерфейс Order
+export interface Order {
+  id: number;
+  machineName?: string;
+  blueprintNumber: string;
+  startDate?: string;
+  deadline: string;
+  quantity: number;
+  willMeetDeadline: boolean;
+  completedQuantity?: number; // Добавлено поле completedQuantity
+  remainingQuantity: number;
+  priority: number;
+  status: string;
+  operations?: Operation[];
+  pdfPath?: string;
+  drawingUrl?: string;
+  previewUrl?: string;
+  estimatedCompletion?: string;
+  estimatedWorkdays?: number;
+  timeMargin?: number;
+  materialType?: string;
+}
+
+// Типы станков
+export enum MachineType {
+  MILLING_3AXIS = '3х',
+  MILLING_4AXIS = '4х',
+  TURNING = 'токарный'
+}
+
+// Интерфейс данных о станках
+export interface Machine {
+  name: string;
+  types: MachineType[];
+  releaseDate: string; // ISO формат даты
+}
+
+// Используем изменяемый массив для хранения моковых данных
+// Начальное состояние
+const INITIAL_MOCK_ORDERS: Order[] = [
+  {
+    id: 1,
+    machineName: 'Doosan Hadasha',
+    blueprintNumber: 'BP-2023-001',
+    startDate: '2023-10-15T10:00:00Z',
+    deadline: '2023-11-15T18:00:00Z',
+    quantity: 10,
+    willMeetDeadline: true,
+    remainingQuantity: 5,
+    priority: 1,
+    status: 'в работе',
+    operations: [
+      { opNumber: 1, opTime: 60, opAxes: '3х' },
+      { opNumber: 2, opTime: 45, opAxes: '4х' }
+    ]
+  },
+  {
+    id: 2,
+    machineName: 'Pinnacle Gdola',
+    blueprintNumber: 'BP-2023-002',
+    startDate: '2023-10-20T09:00:00Z',
+    deadline: '2023-12-01T18:00:00Z',
+    quantity: 5,
+    willMeetDeadline: false,
+    remainingQuantity: 5,
+    priority: 2,
+    status: 'новый',
+    operations: [
+      { opNumber: 1, opTime: 90, opAxes: '4х' }
+    ]
+  },
+  {
+    id: 3,
+    blueprintNumber: 'BP-2023-003',
+    deadline: '2023-11-25T18:00:00Z',
+    quantity: 15,
+    willMeetDeadline: true,
+    remainingQuantity: 15,
+    priority: 3,
+    status: 'новый',
+    pdfPath: '/uploads/sample.pdf',
+    operations: [
+      { opNumber: 1, opTime: 30, opAxes: '3х' },
+      { opNumber: 2, opTime: 60, opAxes: '3х' },
+      { opNumber: 3, opTime: 45, opAxes: '4х' }
+    ]
+  }
+];
+
+// Моковые данные о станках
+const INITIAL_MOCK_MACHINES: Machine[] = [
+  { 
+    name: 'Mitsubishi', 
+    types: [MachineType.MILLING_3AXIS], 
+    releaseDate: new Date().toISOString() 
+  },
+  { 
+    name: 'Pinnacle Ktana', 
+    types: [MachineType.MILLING_3AXIS], 
+    releaseDate: new Date().toISOString() 
+  },
+  { 
+    name: 'Doosan Yashana', 
+    types: [MachineType.MILLING_3AXIS, MachineType.MILLING_4AXIS], 
+    releaseDate: new Date('2025-03-21').toISOString() 
+  },
+  { 
+    name: 'Doosan Hadasha', 
+    types: [MachineType.MILLING_3AXIS, MachineType.MILLING_4AXIS], 
+    releaseDate: new Date('2025-03-25').toISOString() 
+  },
+  { 
+    name: 'Pinnacle Gdola', 
+    types: [MachineType.MILLING_3AXIS, MachineType.MILLING_4AXIS], 
+    releaseDate: new Date().toISOString() 
+  },
+  { 
+    name: 'Okuma', 
+    types: [MachineType.TURNING], 
+    releaseDate: new Date().toISOString() 
+  },
+  { 
+    name: 'JohnFord', 
+    types: [MachineType.TURNING], 
+    releaseDate: new Date().toISOString() 
+  }
+];
+
+// Используем sessionStorage или localStorage для сохранения состояния между перезагрузками страницы
+const initMockOrders = (): Order[] => {
+  const savedOrders = sessionStorage.getItem('mockOrders');
+  if (savedOrders) {
+    try {
+      return JSON.parse(savedOrders) as Order[];
+    } catch (e) {
+      console.error('Error parsing saved orders:', e);
+      return [...INITIAL_MOCK_ORDERS];
+    }
+  }
+  return [...INITIAL_MOCK_ORDERS];
+};
+
+// Инициализация моковых данных станков
+const initMockMachines = (): Machine[] => {
+  const savedMachines = sessionStorage.getItem('mockMachines');
+  if (savedMachines) {
+    try {
+      return JSON.parse(savedMachines) as Machine[];
+    } catch (e) {
+      console.error('Error parsing saved machines:', e);
+      return [...INITIAL_MOCK_MACHINES];
+    }
+  }
+  return [...INITIAL_MOCK_MACHINES];
+};
+
+// Изменяемый массив для хранения текущего состояния моковых данных
+let mockOrders: Order[] = initMockOrders();
+let mockMachines: Machine[] = initMockMachines();
+
+// Функция для сохранения обновленных моковых данных
+const saveMockOrders = (): void => {
+  sessionStorage.setItem('mockOrders', JSON.stringify(mockOrders));
+};
+
+// Функция для сохранения обновленных данных о станках
+const saveMockMachines = (): void => {
+  sessionStorage.setItem('mockMachines', JSON.stringify(mockMachines));
+};
+
+// Флаг для использования моковых данных
+const USE_MOCK_DATA = false;
+
+// Методы API с поддержкой моковых данных
+export const fetchOrders = async (): Promise<Order[]> => {
+  if (USE_MOCK_DATA) {
+    console.log('Using mock data for orders');
+    return Promise.resolve([...mockOrders]);
+  }
+
+  try {
+    const response = await axios.get(`${API_URL}/orders`);
+    
+    // Преобразуем поля из snake_case в camelCase
+    return response.data.map((order: any) => ({
+      id: order.id,
+      machineName: order.machine_name,
+      blueprintNumber: order.blueprint_number,
+      startDate: order.start_date,
+      deadline: order.deadline,
+      quantity: order.quantity,
+      willMeetDeadline: order.will_meet_deadline,
+      completedQuantity: order.completed_quantity,
+      remainingQuantity: order.remaining_quantity,
+      priority: order.priority,
+      status: order.status,
+      pdfPath: order.pdf_path,
+      drawingUrl: order.drawing_url,
+      previewUrl: order.preview_url,
+      estimatedCompletion: order.estimated_completion,
+      estimatedWorkdays: order.estimated_workdays,
+      timeMargin: order.time_margin,
+      operations: order.operations ? order.operations.map((op: any) => ({
+        opNumber: op.op_number,
+        opTime: op.op_time,
+        opAxes: op.op_axes,
+        assignedMachine: op.assigned_machine,
+        startDate: op.start_date,
+        endDate: op.end_date
+      })) : [],
+    }));
+  } catch (error) {
+    console.error('Error fetching orders:', error);
+    throw error;
+  }
+};
+
+export const createOrder = async (orderData: any): Promise<Order> => {
+  if (USE_MOCK_DATA) {
+    console.log('Creating mock order:', orderData);
+    
+    // Генерируем ID для нового заказа
+    const nextId = mockOrders.length > 0 
+      ? Math.max(...mockOrders.map((order: Order) => order.id)) + 1 
+      : 1;
+    
+    // Создаем новый заказ из данных формы
+    const newOrder: Order = {
+      id: nextId,
+      blueprintNumber: 'Unknown',
+      deadline: new Date().toISOString(),
+      quantity: 1,
+      willMeetDeadline: true,
+      remainingQuantity: 1,
+      priority: 1,
+      status: 'новый',
+    };
+    
+    // Если orderData - это FormData
+    if (orderData instanceof FormData) {
+      // Извлекаем поля из FormData
+      const blueprintNumber = orderData.get('blueprintNumber')?.toString();
+      if (blueprintNumber) newOrder.blueprintNumber = blueprintNumber;
+      
+      const deadline = orderData.get('deadline')?.toString();
+      if (deadline) newOrder.deadline = deadline;
+      
+      const quantityStr = orderData.get('quantity')?.toString();
+      newOrder.quantity = quantityStr ? parseInt(quantityStr, 10) : 1;
+      
+      const remainingQuantityStr = orderData.get('remainingQuantity')?.toString();
+      newOrder.remainingQuantity = remainingQuantityStr ? parseInt(remainingQuantityStr, 10) : 1;
+      
+      const priorityStr = orderData.get('priority')?.toString();
+      newOrder.priority = priorityStr ? parseInt(priorityStr, 10) : 1;
+      
+      const status = orderData.get('status')?.toString();
+      if (status) newOrder.status = status;
+      
+      const willMeetDeadlineStr = orderData.get('willMeetDeadline')?.toString();
+      newOrder.willMeetDeadline = willMeetDeadlineStr === 'true';
+      
+      // Обрабатываем необязательные поля
+      const machineName = orderData.get('machineName')?.toString();
+      if (machineName) newOrder.machineName = machineName;
+      
+      const startDate = orderData.get('startDate')?.toString();
+      if (startDate) newOrder.startDate = startDate;
+      
+      // Обрабатываем operations
+      const operationsString = orderData.get('operations')?.toString();
+      if (operationsString) {
+        try {
+          newOrder.operations = JSON.parse(operationsString) as Operation[];
+        } catch (e) {
+          console.error('Error parsing operations:', e);
+        }
+      }
+      
+      // Имитируем загрузку PDF
+      const file = orderData.get('file');
+      if (file) {
+        newOrder.pdfPath = `/uploads/mock-pdf-${nextId}.pdf`;
+      }
+    } else {
+      // Если это обычный объект
+      Object.assign(newOrder, orderData);
+    }
+    
+    // Добавляем новый заказ в массив
+    mockOrders.push(newOrder);
+    
+    // Сохраняем обновленные данные
+    saveMockOrders();
+    
+    // Имитация задержки на сервере
+    await new Promise(resolve => setTimeout(resolve, 500));
+    return Promise.resolve(newOrder);
+  }
+
+  try {
+    // Проверяем, является ли orderData экземпляром FormData
+    const isFormData = orderData instanceof FormData;
+    
+    const response = await axios.post(`${API_URL}/orders`, orderData, {
+      headers: {
+        'Content-Type': isFormData 
+          ? 'multipart/form-data' 
+          : 'application/json',
+      },
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error creating order:', error);
+    throw error;
+  }
+};
+
+export const updateOrder = async (id: number, orderData: any): Promise<Order> => {
+  if (USE_MOCK_DATA) {
+    console.log(`Updating mock order ${id}:`, orderData);
+    
+    // Находим заказ по ID
+    const orderIndex = mockOrders.findIndex((order: Order) => order.id === id);
+    if (orderIndex === -1) {
+      throw new Error(`Order with ID ${id} not found`);
+    }
+    
+    // Трансформируем snake_case в camelCase для мок-хранилища
+    const transformedData: any = {};
+    for (const key in orderData) {
+      if (key === 'operations' && Array.isArray(orderData.operations)) {
+        transformedData.operations = orderData.operations.map((op: any) => ({
+          opNumber: op.op_number,
+          opTime: op.op_time,
+          opAxes: op.op_axes,
+          assignedMachine: op.assigned_machine,
+          startDate: op.start_date,
+          endDate: op.end_date
+        }));
+      } else if (key === 'will_meet_deadline') {
+        transformedData.willMeetDeadline = orderData.will_meet_deadline;
+      } else if (key === 'completed_quantity') {
+        transformedData.completedQuantity = orderData.completed_quantity;
+      } else if (key === 'remaining_quantity') {
+        transformedData.remainingQuantity = orderData.remaining_quantity;
+      } else if (key === 'estimated_completion') {
+        transformedData.estimatedCompletion = orderData.estimated_completion;
+      } else if (key === 'estimated_workdays') {
+        transformedData.estimatedWorkdays = orderData.estimated_workdays;
+      } else if (key === 'time_margin') {
+        transformedData.timeMargin = orderData.time_margin;
+      } else if (key === 'machine_name') {
+        transformedData.machineName = orderData.machine_name;
+      } else if (key === 'blueprint_number') {
+        transformedData.blueprintNumber = orderData.blueprint_number;
+      } else if (key === 'start_date') {
+        transformedData.startDate = orderData.start_date;
+      } else if (key === 'drawing_url') {
+        transformedData.drawingUrl = orderData.drawing_url;
+      } else if (key === 'preview_url') {
+        transformedData.previewUrl = orderData.preview_url;
+      } else if (key === 'pdf_path') {
+        transformedData.pdfPath = orderData.pdf_path;
+      } else {
+        transformedData[key] = orderData[key];
+      }
+    }
+    
+    // Обновляем данные заказа
+    mockOrders[orderIndex] = {
+      ...mockOrders[orderIndex],
+      ...transformedData,
+    };
+    
+    // Сохраняем обновленные данные
+    saveMockOrders();
+    
+    // Имитация задержки на сервере
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return Promise.resolve(mockOrders[orderIndex]);
+  }
+
+  try {
+    // Отправляем данные как есть, они уже должны быть в формате snake_case
+    console.log(`Sending update to server for order ${id}:`, orderData);
+    
+    const response = await axios.patch(`${API_URL}/orders/${id}`, orderData);
+    
+    // Преобразуем ответ от сервера из snake_case в camelCase
+    const updatedOrder: Order = {
+      id: response.data.id,
+      machineName: response.data.machine_name,
+      blueprintNumber: response.data.blueprint_number,
+      startDate: response.data.start_date,
+      deadline: response.data.deadline,
+      quantity: response.data.quantity,
+      willMeetDeadline: response.data.will_meet_deadline,
+      completedQuantity: response.data.completed_quantity,
+      remainingQuantity: response.data.remaining_quantity,
+      priority: response.data.priority,
+      status: response.data.status,
+      pdfPath: response.data.pdf_path,
+      drawingUrl: response.data.drawing_url,
+      previewUrl: response.data.preview_url,
+      estimatedCompletion: response.data.estimated_completion,
+      estimatedWorkdays: response.data.estimated_workdays,
+      timeMargin: response.data.time_margin,
+      operations: response.data.operations ? response.data.operations.map((op: any) => ({
+        opNumber: op.op_number,
+        opTime: op.op_time,
+        opAxes: op.op_axes,
+        assignedMachine: op.assigned_machine,
+        startDate: op.start_date,
+        endDate: op.end_date
+      })) : [],
+    };
+    
+    return updatedOrder;
+  } catch (error) {
+    console.error(`Error updating order ${id}:`, error);
+    throw error;
+  }
+};
+
+export const deleteOrder = async (id: number): Promise<void> => {
+  if (USE_MOCK_DATA) {
+    console.log(`Deleting mock order ${id}`);
+    
+    // Удаляем заказ по ID
+    mockOrders = mockOrders.filter((order: Order) => order.id !== id);
+    
+    // Сохраняем обновленные данные
+    saveMockOrders();
+    
+    // Имитация задержки на сервере
+    await new Promise(resolve => setTimeout(resolve, 300));
+    return Promise.resolve();
+  }
+
+  try {
+    await axios.delete(`${API_URL}/orders/${id}`);
+  } catch (error) {
+    console.error(`Error deleting order ${id}:`, error);
+    throw error;
+  }
+};
+
+export const getOrderById = async (id: number): Promise<Order> => {
+  if (USE_MOCK_DATA) {
+    const mockOrder = mockOrders.find((order: Order) => order.id === id);
+    if (mockOrder) {
+      return Promise.resolve({...mockOrder});
+    }
+    throw new Error('Order not found');
+  }
+
+  try {
+    const response = await axios.get(`${API_URL}/orders/${id}`);
+    return response.data;
+  } catch (error) {
+    console.error(`Error fetching order ${id}:`, error);
+    throw error;
+  }
+};
+
+// Функция для получения данных о станках - используем только моковые данные
+export const fetchMachines = async (): Promise<Machine[]> => {
+  console.log('Using mock data for machines');
+  return Promise.resolve([...mockMachines]);
+};
+
+// Функция для обновления даты освобождения станка
+export const updateMachineReleaseDate = async (name: string, releaseDate: string): Promise<Machine> => {
+  console.log(`Updating mock machine ${name} release date to:`, releaseDate);
+  
+  const machineIndex = mockMachines.findIndex(m => m.name === name);
+  if (machineIndex === -1) {
+    throw new Error(`Machine with name ${name} not found`);
+  }
+  
+  mockMachines[machineIndex] = {
+    ...mockMachines[machineIndex],
+    releaseDate
+  };
+  
+  // Сохраняем обновленные данные
+  saveMockMachines();
+  
+  return Promise.resolve({...mockMachines[machineIndex]});
+};
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\api\ScheduleService.ts
+// src/services/ScheduleService.ts
+import { Order, Operation } from '../api/ordersApi';
+import { MachineSchedule, OrderAssignment, ScheduleState, saveScheduleState, loadScheduleState } from '../models/ScheduleModels';
+
+// Список доступных станков
+const AVAILABLE_MACHINES = [
+  "Doosan Hadasha",
+  "Doosan Yashana",
+  "Pinnacle Gdola",
+  "Pinnacle Ktana",
+  "Mitsubishi",
+  "Okuma",
+  "JohnFord"
+];
+
+// Функция для расчета распределения заказов по станкам
+export const calculateSchedule = (orders: Order[]): ScheduleState => {
+  console.log('Расчет распределения заказов:', orders);
+  
+  // Инициализация пустого расписания
+  const schedule: ScheduleState = {
+    machines: AVAILABLE_MACHINES.map(name => ({
+      machineName: name,
+      assignments: [],
+      utilization: 0,
+      availableFrom: new Date().toISOString()
+    })),
+    unassignedOrders: [],
+    lastCalculationDate: new Date().toISOString(),
+    isScheduleActive: true
+  };
+  
+  // Фильтруем заказы, которые можно распределить (не завершенные)
+  const ordersToSchedule = orders.filter(order => 
+    order.status !== 'завершен' && order.operations && order.operations.length > 0
+  );
+  
+  // Если нет заказов для распределения, возвращаем пустое расписание
+  if (ordersToSchedule.length === 0) {
+    return schedule;
+  }
+  
+  // Сортируем заказы по приоритету (сначала более высокий приоритет)
+  ordersToSchedule.sort((a, b) => b.priority - a.priority);
+  
+  // Распределяем операции заказов по станкам
+  ordersToSchedule.forEach(order => {
+    if (!order.operations || order.operations.length === 0) {
+      schedule.unassignedOrders.push(order.id);
+      return;
+    }
+    
+    // Сортируем операции по номеру
+    const sortedOperations = [...order.operations].sort((a, b) => a.opNumber - b.opNumber);
+    
+    // Распределяем каждую операцию на подходящий станок
+    sortedOperations.forEach(operation => {
+      const assignedMachine = assignOperationToMachine(schedule.machines, order, operation);
+      
+      if (!assignedMachine) {
+        // Если не удалось распределить операцию, добавляем заказ в список нераспределенных
+        if (!schedule.unassignedOrders.includes(order.id)) {
+          schedule.unassignedOrders.push(order.id);
+        }
+      }
+    });
+  });
+  
+  // Вычисляем загрузку станков
+  calculateMachineUtilization(schedule.machines);
+  
+  // Сохраняем расписание в localStorage
+  saveScheduleState(schedule);
+  
+  return schedule;
+};
+
+// Функция для назначения операции на станок
+const assignOperationToMachine = (
+  machines: MachineSchedule[], 
+  order: Order, 
+  operation: Operation
+): MachineSchedule | null => {
+  // Определяем предпочтительные станки для данного типа операции
+  const preferredMachines = machines.filter(m => {
+    // Для 4х-осевых операций подходят только определенные станки
+    if (operation.opAxes === '4х') {
+      return ['Doosan Hadasha', 'Pinnacle Gdola', 'Mitsubishi'].includes(m.machineName);
+    }
+    return true; // Для 3х-осевых подходят все станки
+  });
+  
+  // Если уже есть machineName в заказе, пробуем назначить на него
+  if (order.machineName) {
+    const targetMachine = machines.find(m => m.machineName === order.machineName);
+    if (targetMachine) {
+      return assignToSpecificMachine(targetMachine, order, operation);
+    }
+  }
+  
+  // Сортируем станки по времени доступности
+  preferredMachines.sort((a, b) => 
+    new Date(a.availableFrom).getTime() - new Date(b.availableFrom).getTime()
+  );
+  
+  // Назначаем операцию на первый доступный станок
+  if (preferredMachines.length > 0) {
+    return assignToSpecificMachine(preferredMachines[0], order, operation);
+  }
+  
+  return null;
+};
+
+// Функция для назначения операции на конкретный станок
+const assignToSpecificMachine = (
+  machine: MachineSchedule, 
+  order: Order, 
+  operation: Operation
+): MachineSchedule => {
+  // Получаем текущее время доступности станка
+  const startTime = new Date(machine.availableFrom);
+  
+  // Рассчитываем время окончания операции
+  const endTime = new Date(startTime.getTime() + operation.opTime * 60 * 1000);
+  
+  // Создаем назначение
+  const assignment: OrderAssignment = {
+    orderId: order.id,
+    orderNumber: order.blueprintNumber,
+    operationId: (operation as any).id, // Используем any, т.к. id может отсутствовать в типе
+    operationNumber: operation.opNumber,
+    startTime: startTime.toISOString(),
+    endTime: endTime.toISOString(),
+    duration: operation.opTime,
+    isCompleted: false
+  };
+  
+  // Добавляем назначение и обновляем время доступности станка
+  machine.assignments.push(assignment);
+  machine.availableFrom = endTime.toISOString();
+  
+  return machine;
+};
+
+// Функция для расчета загрузки станков
+const calculateMachineUtilization = (machines: MachineSchedule[]): void => {
+  const currentTime = new Date().getTime();
+  const oneWeekFromNow = currentTime + 7 * 24 * 60 * 60 * 1000; // Одна неделя в миллисекундах
+  
+  machines.forEach(machine => {
+    if (machine.assignments.length === 0) {
+      machine.utilization = 0;
+      return;
+    }
+    
+    // Общее время работы станка на неделю (в минутах)
+    const totalAvailableTime = 5 * 8 * 60; // 5 дней по 8 часов в минутах
+    
+    // Время, занятое операциями на следующую неделю (в минутах)
+    let occupiedTime = 0;
+    
+    machine.assignments.forEach(assignment => {
+      const startTime = new Date(assignment.startTime).getTime();
+      const endTime = new Date(assignment.endTime).getTime();
+      
+      // Проверяем, попадает ли операция в следующую неделю
+      if (startTime >= currentTime && startTime <= oneWeekFromNow) {
+        // Если да, добавляем ее продолжительность к занятому времени
+        occupiedTime += assignment.duration;
+      }
+    });
+    
+    // Рассчитываем процент загрузки
+    machine.utilization = Math.min(100, Math.round((occupiedTime / totalAvailableTime) * 100));
+  });
+};
+
+// Функция для сброса расписания
+export const resetSchedule = (): void => {
+  // Загружаем текущее расписание
+  const currentState = loadScheduleState();
+  
+  if (!currentState) return;
+  
+  // Создаем новое состояние с пустыми назначениями
+  const newState: ScheduleState = {
+    machines: currentState.machines.map(machine => ({
+      ...machine,
+      assignments: machine.assignments.filter(assignment => assignment.isCompleted),
+      availableFrom: new Date().toISOString(),
+      utilization: 0
+    })),
+    unassignedOrders: [],
+    lastCalculationDate: new Date().toISOString(),
+    isScheduleActive: false
+  };
+  
+  // Сохраняем новое состояние
+  saveScheduleState(newState);
+};
+
+// Функция для отметки операции как выполненной
+export const markAssignmentCompleted = (
+  machineIndex: number, 
+  assignmentIndex: number, 
+  isCompleted: boolean
+): void => {
+  const currentState = loadScheduleState();
+  
+  if (!currentState) return;
+  
+  // Проверяем индексы
+  if (machineIndex < 0 || machineIndex >= currentState.machines.length) return;
+  
+  const machine = currentState.machines[machineIndex];
+  
+  if (assignmentIndex < 0 || assignmentIndex >= machine.assignments.length) return;
+  
+  // Обновляем статус выполнения
+  currentState.machines[machineIndex].assignments[assignmentIndex].isCompleted = isCompleted;
+  
+  // Сохраняем обновленное состояние
+  saveScheduleState(currentState);
+};
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\CalculationPage.tsx
+import React, { useState, useEffect } from 'react';
+import { fetchOrders, fetchMachines, updateMachineReleaseDate, updateOrder, Machine, MachineType } from '../api/ordersApi';
+import { addDays, format, differenceInDays } from 'date-fns';
+import { useNavigate } from 'react-router-dom';
+import MachineOperationsList from '../components/MachineOperationsList';
+
+// Операция заказа с назначенным станком
+interface OrderOperation {
+  opNumber: number;
+  opTime: number;
+  opAxes: string;
+  assignedMachine?: string;
+  startDate?: Date;
+  endDate?: Date;
+}
+
+// Заказ с возможностью расчета
+interface OrderWithCalculation {
+  id: number;
+  blueprintNumber: string;
+  deadline: Date;
+  quantity: number;
+  priority: number;
+  willMeetDeadline: boolean;
+  status: string;
+  operations: OrderOperation[];
+  machineName?: string;
+  calculatedEndDate?: Date;
+}
+
+// Интерфейс для хранения состояния расчета
+interface CalculationState {
+  calculatedOrders: OrderWithCalculation[];
+  machines: Machine[];
+  lastCalculationDate: string;
+  isActive: boolean;
+}
+
+const CalculationPage: React.FC = () => {
+  const [orders, setOrders] = useState<OrderWithCalculation[]>([]);
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [isCalculating, setIsCalculating] = useState(false);
+  const [calculationResult, setCalculationResult] = useState<OrderWithCalculation[]>([]);
+  const [isResultVisible, setIsResultVisible] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<'results' | 'machines'>('results');
+  const [autoSaveInProgress, setAutoSaveInProgress] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const navigate = useNavigate();
+
+  // Константы для расчетов
+  const MINUTES_PER_DAY = 960; // 16 часов в день
+  const SETUP_TIME = 480; // 8 часов на наладку
+  
+  // Загрузка данных и проверка сохраненного расчета
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        // Загружаем сохраненное состояние расчета из localStorage
+        const savedCalculation = localStorage.getItem('factoryCalculationState');
+        if (savedCalculation) {
+          const calculationState: CalculationState = JSON.parse(savedCalculation);
+          
+          // Проверяем, активно ли сохраненное состояние
+          if (calculationState.isActive) {
+            // Преобразуем строковые даты в объекты Date
+            const restoredOrders = calculationState.calculatedOrders.map(order => {
+              return {
+                ...order,
+                deadline: new Date(order.deadline),
+                calculatedEndDate: order.calculatedEndDate ? new Date(order.calculatedEndDate) : undefined,
+                operations: order.operations.map(op => ({
+                  ...op,
+                  startDate: op.startDate ? new Date(op.startDate) : undefined,
+                  endDate: op.endDate ? new Date(op.endDate) : undefined
+                }))
+              };
+            });
+            
+            // Восстанавливаем состояние
+            setCalculationResult(restoredOrders);
+            setMachines(calculationState.machines);
+            setIsResultVisible(true);
+            
+            console.log('Восстановлено сохраненное состояние расчета от:', 
+                        new Date(calculationState.lastCalculationDate).toLocaleString());
+          }
+        }
+        
+        // В любом случае загружаем актуальные данные
+        await loadMachinesAndOrders();
+        
+      } catch (error: any) {
+        console.error('Ошибка при загрузке данных:', error);
+        setError('Ошибка при загрузке данных. Попробуйте перезагрузить страницу.');
+        
+        // Загружаем актуальные данные даже в случае ошибки
+        loadMachinesAndOrders();
+      }
+    };
+    
+    loadData();
+  }, []);
+  
+  // Загрузка станков и заказов
+  const loadMachinesAndOrders = async () => {
+    try {
+      // Загружаем станки
+      const machinesData = await fetchMachines();
+      setMachines(machinesData);
+      
+      // Загружаем заказы
+      const ordersData = await fetchOrders();
+      
+      // Преобразуем заказы к нужному формату
+      const formattedOrders: OrderWithCalculation[] = ordersData.map(order => ({
+        id: order.id,
+        blueprintNumber: order.blueprintNumber || '',
+        deadline: order.deadline ? new Date(order.deadline) : new Date(),
+        quantity: order.quantity,
+        priority: order.priority || 1,
+        willMeetDeadline: order.willMeetDeadline,
+        status: order.status,
+        operations: order.operations?.map(op => ({
+          opNumber: op.opNumber,
+          opTime: op.opTime,
+          opAxes: op.opAxes,
+          assignedMachine: op.assignedMachine,
+          startDate: op.startDate ? new Date(op.startDate) : undefined,
+          endDate: op.endDate ? new Date(op.endDate) : undefined
+        })) || [],
+        machineName: order.machineName
+      }));
+      
+      setOrders(formattedOrders);
+      setError(null);
+    } catch (error: any) {
+      console.error('Ошибка при загрузке данных:', error);
+      setError('Не удалось загрузить данные о станках или заказах.');
+    }
+  };
+
+  // Проверка, является ли день выходным (пятница или суббота)
+  const isWeekend = (date: Date): boolean => {
+    const day = date.getDay();
+    return day === 5 || day === 6; // 5 - пятница, 6 - суббота
+  };
+
+  // Добавление рабочих дней к дате с учетом выходных (пятница, суббота)
+  const addWorkingDays = (date: Date, days: number): Date => {
+    let result = new Date(date);
+    let remainingDays = days;
+    
+    while (remainingDays > 0) {
+      result = addDays(result, 1);
+      
+      // Пропускаем выходные дни
+      if (!isWeekend(result)) {
+        remainingDays--;
+      }
+    }
+    
+    return result;
+  };
+
+  // Получение следующего рабочего дня
+  const getNextWorkingDay = (date: Date): Date => {
+    let nextDay = new Date(date);
+    
+    do {
+      nextDay = addDays(nextDay, 1);
+    } while (isWeekend(nextDay));
+    
+    return nextDay;
+  };
+
+  // Сохранение расчета в localStorage
+  const saveCalculationState = (calculatedOrders: OrderWithCalculation[], machines: Machine[]) => {
+    try {
+      const calculationState: CalculationState = {
+        calculatedOrders,
+        machines,
+        lastCalculationDate: new Date().toISOString(),
+        isActive: true
+      };
+      
+      localStorage.setItem('factoryCalculationState', JSON.stringify(calculationState));
+      console.log('Состояние расчета сохранено в localStorage');
+    } catch (error) {
+      console.error('Ошибка при сохранении состояния расчета:', error);
+    }
+  };
+
+  // Проверка, есть ли выполненные операции
+  const hasCompletedOperations = (): boolean => {
+    return calculationResult.some(order => 
+      order.operations.some(op => op.assignedMachine && order.status === 'завершен')
+    );
+  };
+
+  // Сброс результатов расчета
+  const resetCalculation = async () => {
+    // Проверяем, есть ли выполненные операции, которые не отмечены как завершенные
+    if (hasCompletedOperations()) {
+      const confirmed = window.confirm(
+        'Некоторые операции уже выполнены. Убедитесь, что вы отметили все выполненные заказы как "завершен". Продолжить сброс?'
+      );
+      
+      if (!confirmed) return;
+    }
+    
+    setIsResetting(true);
+    
+    try {
+      // Помечаем сохраненное состояние как неактивное
+      const savedCalculation = localStorage.getItem('factoryCalculationState');
+      if (savedCalculation) {
+        const calculationState: CalculationState = JSON.parse(savedCalculation);
+        calculationState.isActive = false;
+        localStorage.setItem('factoryCalculationState', JSON.stringify(calculationState));
+      }
+      
+      // Сбрасываем состояние компонента
+      setCalculationResult([]);
+      setIsResultVisible(false);
+      
+      // Перезагружаем данные
+      await loadMachinesAndOrders();
+      
+      setError(null);
+      console.log('Результаты расчета сброшены');
+    } catch (error: any) {
+      console.error('Ошибка при сбросе результатов:', error);
+      setError('Ошибка при сбросе результатов. Попробуйте еще раз.');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  // Автоматически сохраняем результаты расчета
+  const autoSaveCalculationResults = async (calculatedOrders: OrderWithCalculation[]) => {
+    try {
+      setAutoSaveInProgress(true);
+      
+      // Фильтруем заказы, у которых есть назначенные операции
+      const updatedOrders = calculatedOrders
+        .filter(order => order.operations.some(op => op.assignedMachine));
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      for (const order of updatedOrders) {
+        try {
+          // Форматируем операции в snake_case для бэкенда
+          const operationsForUpdate = order.operations
+            .filter(op => op.assignedMachine)
+            .map(op => ({
+              op_number: op.opNumber,
+              op_time: op.opTime,
+              op_axes: op.opAxes,
+              assigned_machine: op.assignedMachine,
+              start_date: op.startDate ? op.startDate.toISOString() : undefined,
+              end_date: op.endDate ? op.endDate.toISOString() : undefined
+            }));
+          
+          // Обновляем заказ - используем snake_case для соответствия бэкенду
+          const updateData: any = {
+            will_meet_deadline: order.willMeetDeadline,
+            operations: operationsForUpdate
+          };
+          
+          // Если есть расчетная дата окончания, добавляем её в updateData
+          if (order.calculatedEndDate) {
+            updateData.estimated_completion = order.calculatedEndDate.toISOString();
+            
+            // Рассчитываем количество рабочих дней между сегодня и расчетной датой
+            const today = new Date();
+            let workDays = 0;
+            let currentDate = new Date(today);
+            
+            while (currentDate < order.calculatedEndDate) {
+              currentDate = addDays(currentDate, 1);
+              if (!isWeekend(currentDate)) {
+                workDays++;
+              }
+            }
+            
+            updateData.estimated_workdays = workDays;
+            
+            // Проверяем, успеваем ли к сроку
+            if (order.calculatedEndDate > order.deadline) {
+              updateData.will_meet_deadline = false;
+              
+              // Рассчитываем отрицательный запас времени (сколько дней опоздания)
+              const daysLate = differenceInDays(order.calculatedEndDate, order.deadline);
+              updateData.time_margin = -daysLate;
+            } else {
+              updateData.will_meet_deadline = true;
+              
+              // Рассчитываем положительный запас времени (сколько дней в запасе)
+              const daysAhead = differenceInDays(order.deadline, order.calculatedEndDate);
+              updateData.time_margin = daysAhead;
+            }
+          }
+          
+          // Обновляем заказ через API
+          await updateOrder(order.id, updateData);
+          console.log(`Обновлен заказ ${order.id} с операциями:`, operationsForUpdate);
+          successCount++;
+        } catch (error) {
+          console.error(`Ошибка при обновлении заказа ${order.id}:`, error);
+          errorCount++;
+        }
+      }
+      
+      if (errorCount > 0) {
+        setError(`Не удалось сохранить ${errorCount} из ${updatedOrders.length} заказов.`);
+      }
+      
+      return successCount > 0;
+    } catch (error) {
+      console.error('Ошибка при автоматическом сохранении результатов:', error);
+      setError('Ошибка при сохранении результатов.');
+      return false;
+    } finally {
+      setAutoSaveInProgress(false);
+    }
+  };
+
+  // Расчет распределения заказов по станкам
+  const calculateMachineAssignment = async () => {
+    setIsCalculating(true);
+    setError(null);
+    
+    try {
+      // Копируем массивы для изменения
+      const workingOrders = [...orders];
+      
+      // Преобразуем строковые даты в объекты Date для расчетов
+      const workingMachines = machines.map(machine => ({
+        ...machine,
+        releaseDate: new Date(machine.releaseDate)
+      }));
+      
+      // Фильтруем только заказы без назначенного станка
+      const unassignedOrders = workingOrders.filter(order => !order.machineName);
+      
+      // Сортируем заказы по приоритету (по убыванию) и дедлайну (по возрастанию)
+      unassignedOrders.sort((a, b) => {
+        if (a.priority !== b.priority) {
+          return b.priority - a.priority; // По убыванию приоритета
+        }
+        return a.deadline.getTime() - b.deadline.getTime(); // По возрастанию дедлайна
+      });
+
+      // Проверяем, есть ли заказы для распределения
+      if (unassignedOrders.length === 0) {
+        setError('Нет заказов без назначенного станка для распределения.');
+        setIsCalculating(false);
+        return;
+      }
+      
+      // Обрабатываем каждый заказ
+      for (const order of unassignedOrders) {
+        let lastOperationEndDate: Date | null = null;
+        
+        // Проверяем, есть ли операции в заказе
+        if (!order.operations || order.operations.length === 0) {
+          console.warn(`Заказ ${order.id} не имеет операций.`);
+          continue;
+        }
+        
+        // Обрабатываем каждую операцию заказа
+        for (let i = 0; i < order.operations.length; i++) {
+          const operation = order.operations[i];
+          
+          // Расчет времени выполнения операции
+          const operationTime = operation.opTime * order.quantity; // e = op * c
+          const totalTime = operationTime + SETUP_TIME; // total_time = e + f
+          const requiredDays = Math.ceil(totalTime / MINUTES_PER_DAY); // Округляем до целых дней
+          
+          // Определяем тип операции и фильтруем подходящие станки
+          let suitableMachines;
+          if (operation.opAxes === '4х') {
+            // Для 4х осевых операций только специальные станки
+            suitableMachines = workingMachines.filter(machine => 
+              machine.types.includes(MachineType.MILLING_4AXIS)
+            );
+          } else if (operation.opAxes === '3х') {
+            // Для 3х осевых операций подходят все фрезерные станки
+            suitableMachines = workingMachines.filter(machine => 
+              machine.types.includes(MachineType.MILLING_3AXIS) || 
+              machine.types.includes(MachineType.MILLING_4AXIS)
+            );
+          } else {
+            // Для токарных операций
+            suitableMachines = workingMachines.filter(machine => 
+              machine.types.includes(MachineType.TURNING)
+            );
+          }
+          
+          // Проверяем, нашли ли подходящие станки
+          if (suitableMachines.length === 0) {
+            console.error(`Не найден подходящий станок для операции ${operation.opNumber} заказа ${order.id}`);
+            continue;
+          }
+          
+          // Сортируем по дате освобождения (выбираем станок, который освободится раньше всех)
+          suitableMachines.sort((a, b) => 
+            a.releaseDate.getTime() - b.releaseDate.getTime()
+          );
+          
+          // Выбираем станок, который освободится раньше всех
+          const selectedMachine = suitableMachines[0];
+          
+          // Определяем дату начала операции
+          let startDate: Date;
+          
+          if (i === 0) {
+            // Для первой операции - дата освобождения станка
+            startDate = new Date(selectedMachine.releaseDate);
+          } else {
+            // Для последующих операций - следующий рабочий день после даты окончания предыдущей операции
+            startDate = lastOperationEndDate!;
+          }
+          
+          // Если дата начала - выходной, переносим на следующий рабочий день
+          if (isWeekend(startDate)) {
+            startDate = getNextWorkingDay(startDate);
+          }
+          
+          // Рассчитываем дату окончания с учетом рабочих дней
+          const endDate = addWorkingDays(startDate, requiredDays);
+          
+          // Сохраняем результат для операции
+          operation.assignedMachine = selectedMachine.name;
+          operation.startDate = new Date(startDate);
+          operation.endDate = new Date(endDate);
+          
+          // Обновляем дату освобождения станка
+          const machineIndex = workingMachines.findIndex(m => m.name === selectedMachine.name);
+          workingMachines[machineIndex].releaseDate = new Date(endDate);
+          
+          // Сохраняем дату окончания для следующей операции
+          lastOperationEndDate = new Date(endDate);
+          
+          // Обновляем моковые данные (в реальном приложении это было бы через API)
+          try {
+            await updateMachineReleaseDate(
+              selectedMachine.name, 
+              endDate.toISOString()
+            );
+          } catch (error) {
+            console.error('Ошибка при обновлении даты освобождения станка:', error);
+          }
+        }
+        
+        // Обновляем информацию о заказе
+        if (lastOperationEndDate) {
+          order.calculatedEndDate = lastOperationEndDate;
+          
+          // Проверяем, успеваем ли к дедлайну
+          order.willMeetDeadline = lastOperationEndDate <= order.deadline;
+          
+          // Если не успеваем к сроку, логируем это
+          if (!order.willMeetDeadline) {
+            console.log(`Заказ ${order.id} не успевает к сроку. Новый срок: ${format(lastOperationEndDate, 'dd.MM.yyyy')}`);
+          }
+        }
+      }
+      
+      // Обновление состояния внутри компонента для отображения
+      setCalculationResult([...workingOrders]);
+      
+      // Сохраняем обновленные даты освобождения станков
+      const updatedMachines = workingMachines.map(machine => ({
+        ...machine,
+        releaseDate: machine.releaseDate.toISOString()
+      }));
+      setMachines(updatedMachines);
+      
+      setIsResultVisible(true);
+      
+      // Сохраняем результаты расчета в localStorage
+      saveCalculationState(workingOrders, updatedMachines);
+      
+      // Автоматически сохраняем результаты расчета в БД
+      const saveResult = await autoSaveCalculationResults(workingOrders);
+      if (saveResult) {
+        console.log('Результаты расчета успешно сохранены в БД!');
+      }
+      
+    } catch (error: any) {
+      console.error('Ошибка при расчете распределения заказов:', error);
+      setError(`Ошибка при расчете: ${error.message}`);
+    } finally {
+      setIsCalculating(false);
+    }
+  };
+
+  // Форматирование даты для отображения
+  const formatDate = (date: Date | undefined): string => {
+    if (!date) return 'Не задано';
+    return format(date, 'dd.MM.yyyy');
+  };
+
+  // Переход к календарю для просмотра результатов
+  const viewInCalendar = () => {
+    navigate('/calendar');
+  };
+
+  // Переключение между вкладками результатов и списка операций
+  const toggleTab = (tab: 'results' | 'machines') => {
+    setActiveTab(tab);
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white p-8">
+      <header className="flex justify-between items-center mb-10">
+        <h1 className="text-4xl font-bold">Расчет загрузки станков</h1>
+        <div className="flex gap-4">
+          <button 
+            className="bg-indigo-600 hover:bg-indigo-500 py-2 px-6 rounded-xl"
+            onClick={() => calculateMachineAssignment()}
+            disabled={isCalculating}
+          >
+            {isCalculating ? 'Расчет...' : 'Рассчитать'}
+          </button>
+          
+          {isResultVisible && (
+            <>
+              <button 
+                className="bg-red-600 hover:bg-red-500 py-2 px-6 rounded-xl"
+                onClick={resetCalculation}
+                disabled={isResetting}
+              >
+                {isResetting ? 'Сброс...' : 'Сбросить'}
+              </button>
+              
+              <button 
+                className="bg-green-600 hover:bg-green-500 py-2 px-6 rounded-xl"
+                onClick={viewInCalendar}
+                disabled={autoSaveInProgress}
+              >
+                Просмотреть в календаре
+              </button>
+            </>
+          )}
+        </div>
+      </header>
+
+      {error && (
+        <div className="bg-red-800 text-white p-4 rounded-xl mb-4">
+          {error}
+        </div>
+      )}
+
+      {autoSaveInProgress && (
+        <div className="bg-blue-800 text-white p-4 rounded-xl mb-4 flex items-center">
+          <div className="inline-block animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+          Сохранение результатов расчета...
+        </div>
+      )}
+
+      {isResetting && (
+        <div className="bg-orange-800 text-white p-4 rounded-xl mb-4 flex items-center">
+          <div className="inline-block animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-white mr-2"></div>
+          Сброс результатов расчета...
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div>
+          <h2 className="text-2xl font-semibold mb-4">Текущая загрузка станков</h2>
+          <div className="bg-gray-800 p-4 rounded-xl">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-gray-700">
+                  <th className="text-left p-2">Станок</th>
+                  <th className="text-left p-2">Тип</th>
+                  <th className="text-left p-2">Дата освобождения</th>
+                </tr>
+              </thead>
+              <tbody>
+                {machines.map((machine, index) => (
+                  <tr key={index} className="border-b border-gray-700">
+                    <td className="p-2">{machine.name}</td>
+                    <td className="p-2">{machine.types.join(', ')}</td>
+                    <td className="p-2">{formatDate(new Date(machine.releaseDate))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h2 className="text-2xl font-semibold mb-4">Заказы без станка</h2>
+          <div className="bg-gray-800 p-4 rounded-xl h-[300px] overflow-y-auto">
+            {orders.filter(order => !order.machineName).length === 0 ? (
+              <p className="text-gray-400 text-center py-8">Нет заказов без назначенного станка</p>
+            ) : (
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-700">
+                    <th className="text-left p-2">ID</th>
+                    <th className="text-left p-2">Чертеж</th>
+                    <th className="text-left p-2">Дедлайн</th>
+                    <th className="text-left p-2">Приоритет</th>
+                    <th className="text-left p-2">Операций</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {orders
+                    .filter(order => !order.machineName)
+                    .map((order) => (
+                      <tr key={order.id} className="border-b border-gray-700">
+                        <td className="p-2">{order.id}</td>
+                        <td className="p-2">{order.blueprintNumber}</td>
+                        <td className="p-2">{formatDate(order.deadline)}</td>
+                        <td className="p-2">{order.priority}</td>
+                        <td className="p-2">{order.operations.length}</td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {isResultVisible && (
+        <div className="mt-10">
+          {/* Вкладки для переключения между видами результатов */}
+          <div className="flex border-b border-gray-700 mb-6">
+            <button
+              className={`py-2 px-4 ${activeTab === 'results' ? 'border-b-2 border-indigo-500 text-indigo-400' : 'text-gray-400'}`}
+              onClick={() => toggleTab('results')}
+            >
+              Результаты по заказам
+            </button>
+            <button
+              className={`py-2 px-4 ${activeTab === 'machines' ? 'border-b-2 border-indigo-500 text-indigo-400' : 'text-gray-400'}`}
+              onClick={() => toggleTab('machines')}
+            >
+              Распределение по станкам
+            </button>
+          </div>
+
+          {/* Отображение результатов в зависимости от выбранной вкладки */}
+          {activeTab === 'results' ? (
+            /* Результаты по заказам */
+            <div>
+              <h2 className="text-2xl font-semibold mb-4">Результаты распределения операций</h2>
+              <div className="space-y-4 max-h-[600px] overflow-y-auto">
+                {calculationResult
+                  .filter(order => order.operations.some(op => op.assignedMachine))
+                  .map((order) => (
+                    <div key={order.id} className="bg-gray-800 p-4 rounded-xl">
+                      <div className="flex justify-between items-center mb-2">
+                        <h3 className="text-xl font-medium">
+                          Заказ #{order.id} - {order.blueprintNumber}
+                        </h3>
+                        <span 
+                          className={`px-3 py-1 rounded-lg text-sm ${
+                            order.willMeetDeadline 
+                              ? 'bg-green-800 text-green-200' 
+                              : 'bg-red-800 text-red-200'
+                          }`}
+                        >
+                          {order.willMeetDeadline ? 'В срок' : 'Опоздание'}
+                        </span>
+                      </div>
+                      
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <p><strong>Дедлайн:</strong> {formatDate(order.deadline)}</p>
+                        <p><strong>Расчетное окончание:</strong> {formatDate(order.calculatedEndDate)}</p>
+                        <p><strong>Приоритет:</strong> {order.priority}</p>
+                        <p><strong>Количество:</strong> {order.quantity}</p>
+                        {!order.willMeetDeadline && order.calculatedEndDate && (
+                          <p className="col-span-2 text-red-400">
+                            <strong>Опоздание на:</strong> {differenceInDays(order.calculatedEndDate, order.deadline)} дней
+                          </p>
+                        )}
+                      </div>
+                      
+                      <div>
+                        <h4 className="font-semibold mb-2">Распределение операций:</h4>
+                        <div className="overflow-x-auto">
+                          <table className="w-full">
+                            <thead>
+                              <tr className="border-b border-gray-700">
+                                <th className="text-left p-2">№</th>
+                                <th className="text-left p-2">Тип</th>
+                                <th className="text-left p-2">Время (мин.)</th>
+                                <th className="text-left p-2">Общее время (мин.)</th>
+                                <th className="text-left p-2">Станок</th>
+                                <th className="text-left p-2">Начало</th>
+                                <th className="text-left p-2">Окончание</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {order.operations.map((op, index) => (
+                                <tr key={index} className="border-b border-gray-700">
+                                  <td className="p-2">{op.opNumber}</td>
+                                  <td className="p-2">{op.opAxes}</td>
+                                  <td className="p-2">{op.opTime}</td>
+                                  <td className="p-2">{op.opTime * order.quantity + SETUP_TIME}</td>
+                                  <td className="p-2">{op.assignedMachine || 'Не назначен'}</td>
+                                  <td className="p-2">{formatDate(op.startDate)}</td>
+                                  <td className="p-2">{formatDate(op.endDate)}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          ) : (
+            /* Распределение операций по станкам */
+            <MachineOperationsList calculatedOrders={calculationResult} />
+          )}
+        </div>
+      )}
+
+      {isResultVisible && calculationResult.filter(order => order.operations.some(op => op.assignedMachine)).length === 0 && (
+        <div className="mt-10 bg-gray-800 p-6 rounded-xl text-center">
+          <p className="text-xl">Нет результатов распределения. Возможно, нет подходящих станков для операций или заказов без станка.</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default CalculationPage;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\HomePage.tsx
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+
+const HomePage: React.FC = () => {
+  const navigate = useNavigate();
+  const currentDate = new Date().toLocaleDateString('ru-RU', {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+
+  return (
+    <div className="min-h-screen bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white flex flex-col items-center justify-center p-8">
+      <div className="text-center">
+        <h1 className="text-5xl font-bold mb-8">Добро пожаловать на Factory Orders</h1>
+
+        <div className="w-80 h-80 bg-gray-800 rounded-full flex items-center justify-center shadow-2xl mx-auto mb-10 border-4 border-indigo-600">
+          <p className="text-2xl font-semibold">{currentDate}</p>
+        </div>
+
+        <button
+          className="bg-indigo-600 hover:bg-indigo-500 text-white py-4 px-8 rounded-xl text-xl"
+          onClick={() => navigate('/orders')}
+        >
+          Перейти к заказам
+        </button>
+      </div>
+    </div>
+  );
+};
+
+export default HomePage;
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\MachineOperationsList.tsx
+import React from 'react';
+import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
+
+interface OrderOperation {
+  opNumber: number;
+  opTime: number;
+  opAxes: string;
+  assignedMachine?: string;
+  startDate?: Date;
+  endDate?: Date;
+}
+
+interface OrderWithOperations {
+  id: number;
+  blueprintNumber: string;
+  deadline: Date;
+  quantity: number;
+  priority: number;
+  willMeetDeadline: boolean;
+  status: string;
+  operations: OrderOperation[];
+  machineName?: string;
+  calculatedEndDate?: Date;
+}
+
+interface MachineOperationsListProps {
+  calculatedOrders: OrderWithOperations[];
+}
+
+const MachineOperationsList: React.FC<MachineOperationsListProps> = ({ calculatedOrders }) => {
+  // Получаем только заказы с назначенными операциями
+  const ordersWithAssignedOperations = calculatedOrders.filter(
+    order => order.operations.some(op => op.assignedMachine)
+  );
+
+  // Группируем операции по станкам
+  const operationsByMachine: { [key: string]: { order: OrderWithOperations, operation: OrderOperation }[] } = {};
+
+  // Проверка, является ли день выходным (пятница или суббота)
+  const isWeekend = (date: Date): boolean => {
+    const day = date.getDay();
+    return day === 5 || day === 6; // 5 - пятница, 6 - суббота
+  };
+
+  ordersWithAssignedOperations.forEach(order => {
+    order.operations.forEach(operation => {
+      if (operation.assignedMachine) {
+        if (!operationsByMachine[operation.assignedMachine]) {
+          operationsByMachine[operation.assignedMachine] = [];
+        }
+        
+        operationsByMachine[operation.assignedMachine].push({
+          order,
+          operation
+        });
+      }
+    });
+  });
+
+  // Сортируем станки
+  const sortedMachineNames = Object.keys(operationsByMachine).sort();
+
+  // Форматирование даты
+  const formatDate = (date?: Date): string => {
+    if (!date) return 'Не задано';
+    return format(date, 'dd.MM.yyyy', { locale: ru });
+  };
+
+  return (
+    <div className="mt-8">
+      <h2 className="text-2xl font-bold mb-6">Распределение операций по станкам</h2>
+      
+      {sortedMachineNames.length === 0 ? (
+        <div className="bg-gray-800 p-6 rounded-xl text-center">
+          <p className="text-xl">Нет распределенных операций по станкам</p>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {sortedMachineNames.map(machineName => {
+            // Сортируем операции по дате начала
+            const machineOperations = operationsByMachine[machineName]
+              .sort((a, b) => {
+                const dateA = a.operation.startDate ? a.operation.startDate.getTime() : 0;
+                const dateB = b.operation.startDate ? b.operation.startDate.getTime() : 0;
+                return dateA - dateB;
+              });
+            
+            return (
+              <div key={machineName} className="bg-gray-800 p-6 rounded-xl">
+                <h3 className="text-xl font-semibold mb-4">Станок: {machineName}</h3>
+                
+                <div className="overflow-x-auto">
+                  <table className="min-w-full">
+                    <thead className="bg-gray-700">
+                      <tr>
+                        <th className="px-4 py-2 text-left">ID заказа</th>
+                        <th className="px-4 py-2 text-left">Чертеж</th>
+                        <th className="px-4 py-2 text-left">Операция</th>
+                        <th className="px-4 py-2 text-left">Количество</th>
+                        <th className="px-4 py-2 text-left">Тип</th>
+                        <th className="px-4 py-2 text-left">Время (мин)</th>
+                        <th className="px-4 py-2 text-left">Дедлайн</th>
+                        <th className="px-4 py-2 text-left">Начало</th>
+                        <th className="px-4 py-2 text-left">Окончание</th>
+                        <th className="px-4 py-2 text-left">Статус</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-700">
+                      {machineOperations.map(({ order, operation }, index) => {
+                        // Проверяем, что даты операции не выпадают на выходные
+                        const startDateIsWeekend = operation.startDate ? isWeekend(operation.startDate) : false;
+                        const endDateIsWeekend = operation.endDate ? isWeekend(operation.endDate) : false;
+                        
+                        return (
+                          <tr 
+                            key={`${order.id}-${operation.opNumber}-${index}`} 
+                            className={`hover:bg-gray-700 ${
+                              startDateIsWeekend || endDateIsWeekend ? 'bg-red-900 bg-opacity-20' : ''
+                            }`}
+                          >
+                            <td className="px-4 py-2">{order.id}</td>
+                            <td className="px-4 py-2">{order.blueprintNumber}</td>
+                            <td className="px-4 py-2">#{operation.opNumber}</td>
+                            <td className="px-4 py-2">{order.quantity}</td>
+                            <td className="px-4 py-2">{operation.opAxes}</td>
+                            <td className="px-4 py-2">{operation.opTime}</td>
+                            <td className="px-4 py-2">{formatDate(order.deadline)}</td>
+                            <td className="px-4 py-2">
+                              {formatDate(operation.startDate)}
+                              {startDateIsWeekend && 
+                                <span className="ml-2 text-xs text-red-400">Выходной!</span>
+                              }
+                            </td>
+                            <td className="px-4 py-2">
+                              {formatDate(operation.endDate)}
+                              {endDateIsWeekend && 
+                                <span className="ml-2 text-xs text-red-400">Выходной!</span>
+                              }
+                            </td>
+                            <td className="px-4 py-2">
+                              <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                order.willMeetDeadline 
+                                  ? 'bg-green-900 text-green-200' 
+                                  : 'bg-red-900 text-red-200'
+                              }`}>
+                                {order.willMeetDeadline ? 'В срок' : 'Опоздание'}
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default MachineOperationsList;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\MachineOrdersList.tsx
+import React, { useState, useEffect } from 'react';
+import { format } from 'date-fns';
+
+// Интерфейсы для типов данных
+interface OrderOperation {
+  opNumber: number;
+  opTime: number;
+  opAxes: string;
+  assignedMachine?: string;
+  startDate?: Date;
+  endDate?: Date;
+}
+
+interface OrderWithCalculation {
+  id: number;
+  blueprintNumber: string;
+  deadline: Date;
+  quantity: number;
+  priority: number;
+  willMeetDeadline: boolean;
+  status: string;
+  operations: OrderOperation[];
+  machineName?: string;
+  calculatedEndDate?: Date;
+}
+
+interface Machine {
+  name: string;
+  types: string[];
+  releaseDate: string;
+}
+
+interface CalculationState {
+  calculatedOrders: OrderWithCalculation[];
+  machines: Machine[];
+  lastCalculationDate: string;
+  isActive: boolean;
+}
+
+interface MachineAssignment {
+  machineName: string;
+  operations: {
+    orderId: number;
+    orderNumber: string;
+    operationNumber: number;
+    startDate: Date;
+    endDate: Date;
+    duration: number;
+  }[];
+}
+
+interface MachineOrdersListProps {
+  onMarkCompleted?: (orderId: number, operationNumber: number, isCompleted: boolean) => void;
+}
+
+const MachineOrdersList: React.FC<MachineOrdersListProps> = ({ onMarkCompleted }) => {
+  const [machineAssignments, setMachineAssignments] = useState<MachineAssignment[]>([]);
+  const [expandedMachines, setExpandedMachines] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    loadCalculationData();
+  }, []);
+
+  // Загрузка данных о распределении заказов
+  const loadCalculationData = () => {
+    try {
+      setLoading(true);
+      
+      const savedCalculation = localStorage.getItem('factoryCalculationState');
+      if (!savedCalculation) {
+        setLoading(false);
+        return;
+      }
+      
+      const calculationState: CalculationState = JSON.parse(savedCalculation);
+      
+      // Проверяем, активно ли сохраненное состояние
+      if (!calculationState.isActive) {
+        setLoading(false);
+        return;
+      }
+      
+      // Преобразуем данные для отображения по станкам
+      const assignments: MachineAssignment[] = [];
+      
+      // Создаем записи для всех станков
+      calculationState.machines.forEach(machine => {
+        assignments.push({
+          machineName: machine.name,
+          operations: []
+        });
+      });
+      
+      // Распределяем операции по станкам
+      calculationState.calculatedOrders.forEach(order => {
+        order.operations.forEach(operation => {
+          if (operation.assignedMachine && operation.startDate && operation.endDate) {
+            // Находим нужный станок
+            const machineIndex = assignments.findIndex(
+              m => m.machineName === operation.assignedMachine
+            );
+            
+            if (machineIndex !== -1) {
+              // Добавляем операцию к станку
+              assignments[machineIndex].operations.push({
+                orderId: order.id,
+                orderNumber: order.blueprintNumber,
+                operationNumber: operation.opNumber,
+                startDate: new Date(operation.startDate),
+                endDate: new Date(operation.endDate),
+                duration: operation.opTime
+              });
+            }
+          }
+        });
+      });
+      
+      // Сортируем операции по дате начала
+      assignments.forEach(machine => {
+        machine.operations.sort((a, b) => 
+          a.startDate.getTime() - b.startDate.getTime()
+        );
+      });
+      
+      // Удаляем станки без операций
+      const filteredAssignments = assignments.filter(
+        machine => machine.operations.length > 0
+      );
+      
+      setMachineAssignments(filteredAssignments);
+      
+      // По умолчанию раскрываем все станки
+      setExpandedMachines(filteredAssignments.map(machine => machine.machineName));
+      
+      setError(null);
+    } catch (error) {
+      console.error('Ошибка при загрузке данных о распределении:', error);
+      setError('Не удалось загрузить данные о распределении заказов.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Переключение отображения станка
+  const toggleMachine = (machineName: string) => {
+    setExpandedMachines(prev => {
+      if (prev.includes(machineName)) {
+        return prev.filter(name => name !== machineName);
+      } else {
+        return [...prev, machineName];
+      }
+    });
+  };
+
+  // Форматирование даты
+  const formatDate = (date: Date): string => {
+    return format(date, 'dd.MM.yyyy');
+  };
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center py-8">
+        <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-600"></div>
+        <p className="ml-2">Загрузка распределения заказов...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-800 text-white p-4 rounded-xl my-4">
+        {error}
+      </div>
+    );
+  }
+
+  if (machineAssignments.length === 0) {
+    return (
+      <div className="bg-gray-800 rounded-xl shadow-lg p-6 text-center">
+        <p>Нет распределенных операций. Нажмите кнопку "Рассчитать" на странице расчета, чтобы распределить заказы по станкам.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {machineAssignments.map(machine => (
+        <div key={machine.machineName} className="bg-gray-800 rounded-xl shadow-lg">
+          <div 
+            className="p-4 bg-gray-700 rounded-t-xl flex justify-between items-center cursor-pointer"
+            onClick={() => toggleMachine(machine.machineName)}
+          >
+            <h2 className="text-xl font-semibold">{machine.machineName}</h2>
+            <div className="flex items-center">
+              <span className="bg-indigo-600 px-2 py-1 rounded text-xs mr-2">
+                {machine.operations.length} операций
+              </span>
+              <span className="text-gray-400">
+                {expandedMachines.includes(machine.machineName) ? '▼' : '▶'}
+              </span>
+            </div>
+          </div>
+          
+          {expandedMachines.includes(machine.machineName) && (
+            <div className="p-4">
+              <div className="space-y-3">
+                {machine.operations.map((op, index) => (
+                  <div 
+                    key={`${op.orderId}-${op.operationNumber}`} 
+                    className="bg-gray-700 rounded p-3 border-l-4 border-yellow-600"
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <span className="font-medium">{op.orderNumber}</span>
+                        <span className="ml-2 text-sm text-gray-400">
+                          Операция #{op.operationNumber}
+                        </span>
+                      </div>
+                      <div className="flex items-center">
+                        <span className="text-xs text-gray-400 mr-2">
+                          {formatDate(op.startDate)} - {formatDate(op.endDate)}
+                        </span>
+                        {onMarkCompleted && (
+                          <input
+                            type="checkbox"
+                            onChange={(e) => onMarkCompleted(op.orderId, op.operationNumber, e.target.checked)}
+                            className="form-checkbox h-4 w-4 text-green-600 rounded focus:ring-green-500"
+                          />
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="text-sm mt-2">
+                      <span className="text-gray-400">Длительность:</span>
+                      <span className="ml-1">{op.duration} мин.</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+};
+
+export default MachineOrdersList;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\MachineScheduleCalendar.tsx
+import React, { useState, useEffect } from 'react';
+import { fetchOrders, fetchMachines, Machine, MachineType } from '../api/ordersApi';
+import { addDays, format, eachDayOfInterval, getDay, isSameDay, differenceInDays, isWeekend as dateFnsIsWeekend } from 'date-fns';
+import { ru } from 'date-fns/locale';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+import axios from 'axios';
+
+// API URL для бэкенда
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
+
+// Интерфейс для данных операции из БД
+interface OperationData {
+  id: number;
+  blueprint_number: string;
+  op_number: number;
+  quantity: number;
+  deadline: string;
+  start_date: string;
+  end_date: string;
+  assigned_machine: string;
+}
+
+interface CalendarItem {
+  date: Date;
+  isWeekend: boolean;
+  operations: {
+    orderId: number;
+    orderNumber: string;
+    operationNumber: number;
+    quantity: number;
+    startDate: Date;
+    endDate: Date;
+    machineName: string;
+    deadline: string;
+  }[];
+}
+
+interface MachineSchedule {
+  machine: Machine;
+  calendar: CalendarItem[];
+}
+
+interface OperationSchedule {
+  orderId: number;
+  orderNumber: string;
+  operationNumber: number;
+  quantity: number;
+  startDate: Date;
+  endDate: Date;
+  machineName: string;
+  deadline: string;
+}
+
+const MachineScheduleCalendar: React.FC = () => {
+  const [machines, setMachines] = useState<Machine[]>([]);
+  const [operationSchedules, setOperationSchedules] = useState<OperationSchedule[]>([]);
+  const [machineSchedules, setMachineSchedules] = useState<MachineSchedule[]>([]);
+  const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
+  const [startDate, setStartDate] = useState<Date>(new Date());
+  const [endDate, setEndDate] = useState<Date>(addDays(new Date(), 90)); // По умолчанию 3 месяца
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Проверка, является ли день выходным (пятница или суббота)
+  const isWeekend = (date: Date): boolean => {
+    const day = date.getDay();
+    return day === 5 || day === 6; // 5 - пятница, 6 - суббота
+  };
+
+  // Функция для прямого запроса операций из БД
+  const fetchOperationsFromDB = async () => {
+    try {
+      setLoading(true);
+      
+      // Запрос всех заказов с операциями
+      const response = await axios.get(`${API_URL}/orders`);
+      const orders = response.data;
+      
+      // Собираем все операции из всех заказов
+      const allOperations: OperationSchedule[] = [];
+      
+      orders.forEach((order: any) => {
+        if (order.operations && order.operations.length > 0) {
+          order.operations.forEach((op: any) => {
+            // Проверяем, что у операции есть назначенный станок и даты
+            if (op.assigned_machine && op.start_date && op.end_date) {
+              const startDate = new Date(op.start_date);
+              const endDate = new Date(op.end_date);
+              
+              // Каждый день между start_date и end_date включительно
+              const daysDuration = differenceInDays(endDate, startDate) + 1;
+              
+              // Добавляем операцию в список для отображения
+              allOperations.push({
+                orderId: order.id,
+                orderNumber: order.blueprint_number || 'Б/Н',
+                operationNumber: op.op_number,
+                quantity: order.quantity,
+                startDate: startDate,
+                endDate: endDate,
+                machineName: op.assigned_machine,
+                deadline: order.deadline
+              });
+            }
+          });
+        }
+      });
+      
+      console.log('Loaded operations from DB:', allOperations.length);
+      setOperationSchedules(allOperations);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching operations from DB:', err);
+      setError('Ошибка при загрузке данных операций из базы данных');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Загрузка данных о станках
+  useEffect(() => {
+    const loadMachines = async () => {
+      setLoading(true);
+      try {
+        const machinesData = await fetchMachines();
+        setMachines(machinesData);
+        
+        if (machinesData.length > 0) {
+          setSelectedMachine(machinesData[0].name);
+        }
+        
+        // После загрузки станков загружаем операции из БД
+        await fetchOperationsFromDB();
+        
+      } catch (error) {
+        console.error('Ошибка при загрузке данных о станках:', error);
+        setError('Не удалось загрузить данные о станках');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    loadMachines();
+  }, []);
+
+  // Формирование календаря на основе операций
+  useEffect(() => {
+    if (machines.length === 0 || operationSchedules.length === 0) return;
+    
+    // Формируем календарь для каждого станка
+    const schedules: MachineSchedule[] = machines.map(machine => {
+      // Получаем все дни в заданном диапазоне дат
+      const days = eachDayOfInterval({ start: startDate, end: endDate });
+      
+      // Создаем объекты дней календаря
+      const calendar: CalendarItem[] = days.map(day => {
+        // Проверяем, является ли день выходным (пятница или суббота)
+        const isWeekendDay = isWeekend(day);
+        
+        // Находим операции, выполняемые на этом станке в этот день
+        const dayOperations = operationSchedules.filter(op => {
+          const isRelevantMachine = op.machineName === machine.name;
+          
+          // Проверка, что день попадает в диапазон выполнения операции
+          const isWithinDateRange = day >= op.startDate && day <= op.endDate;
+          
+          // Проверка, что это не выходной день
+          const isWorkDay = !isWeekendDay;
+          
+          return isRelevantMachine && isWithinDateRange && isWorkDay;
+        });
+        
+        return {
+          date: day,
+          isWeekend: isWeekendDay,
+          operations: dayOperations
+        };
+      });
+      
+      return {
+        machine,
+        calendar
+      };
+    });
+    
+    setMachineSchedules(schedules);
+    
+  }, [machines, operationSchedules, startDate, endDate]);
+
+  // Экспорт в Excel
+  const exportToExcel = () => {
+    // Создаем данные для Excel
+    const worksheetData: any[] = [];
+    
+    // Добавляем заголовок
+    worksheetData.push([`Расписание станков с ${format(startDate, 'dd.MM.yyyy')} по ${format(endDate, 'dd.MM.yyyy')}`]);
+    worksheetData.push([]);
+    
+    // Для каждого станка создаем свой раздел
+    machineSchedules.forEach(machineSchedule => {
+      worksheetData.push([`Станок: ${machineSchedule.machine.name}`]);
+      worksheetData.push(['Дата', 'День недели', 'Выходной', 'ID заказа', 'Чертеж', 'Операция', 'Количество', 'Дедлайн', 'Начало', 'Окончание']);
+      
+      // Добавляем данные для каждого дня
+      machineSchedule.calendar.forEach(day => {
+        if (day.operations.length > 0) {
+          // Если есть операции в этот день
+          day.operations.forEach(op => {
+            worksheetData.push([
+              format(day.date, 'dd.MM.yyyy'),
+              format(day.date, 'EEEE', { locale: ru }),
+              day.isWeekend ? 'Да' : 'Нет',
+              op.orderId,
+              op.orderNumber,
+              `Операция #${op.operationNumber}`,
+              op.quantity,
+              format(new Date(op.deadline), 'dd.MM.yyyy'),
+              format(op.startDate, 'dd.MM.yyyy'),
+              format(op.endDate, 'dd.MM.yyyy')
+            ]);
+          });
+        } else {
+          // Если нет операций
+          worksheetData.push([
+            format(day.date, 'dd.MM.yyyy'),
+            format(day.date, 'EEEE', { locale: ru }),
+            day.isWeekend ? 'Да' : 'Нет',
+            '',
+            '',
+            '',
+            '',
+            '',
+            '',
+            ''
+          ]);
+        }
+      });
+      
+      // Пустая строка между станками
+      worksheetData.push([]);
+    });
+    
+    // Создаем книгу Excel
+    const worksheet = XLSX.utils.aoa_to_sheet(worksheetData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Расписание");
+    
+    // Задаем ширину столбцов
+    const maxWidth = worksheetData.reduce((w, r) => Math.max(w, r.length), 0);
+    const wscols = Array(maxWidth).fill({ wch: 20 }); // ширина колонки 20 символов
+    worksheet['!cols'] = wscols;
+    
+    // Генерируем файл Excel и скачиваем его
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const fileData = new Blob([excelBuffer], { type: 'application/octet-stream' });
+    saveAs(fileData, `Расписание_станков_${format(new Date(), 'dd-MM-yyyy')}.xlsx`);
+  };
+
+  // Отрисовка календаря для выбранного станка
+  const renderSelectedMachineCalendar = () => {
+    if (!selectedMachine) return null;
+    
+    const machineSchedule = machineSchedules.find(s => s.machine.name === selectedMachine);
+    if (!machineSchedule) return null;
+    
+    const months: { [key: string]: CalendarItem[] } = {};
+    
+    // Группируем дни по месяцам
+    machineSchedule.calendar.forEach(item => {
+      const monthKey = format(item.date, 'yyyy-MM');
+      if (!months[monthKey]) {
+        months[monthKey] = [];
+      }
+      months[monthKey].push(item);
+    });
+    
+    return (
+      <div className="space-y-8">
+        {Object.keys(months).map(monthKey => {
+          const monthName = format(new Date(months[monthKey][0].date), 'LLLL yyyy', { locale: ru });
+          
+          return (
+            <div key={monthKey} className="bg-gray-800 rounded-xl p-4">
+              <h3 className="text-xl font-semibold capitalize mb-4">{monthName}</h3>
+              <div className="grid grid-cols-7 gap-1">
+                {/* Дни недели */}
+                {['Вс', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'].map(day => (
+                  <div key={day} className="text-center font-medium py-2 border-b border-gray-700">
+                    {day}
+                  </div>
+                ))}
+                
+                {/* Заполнители для выравнивания календаря */}
+                {Array.from({ length: getDay(months[monthKey][0].date) }).map((_, i) => (
+                  <div key={`empty-start-${i}`} className="h-36"></div>
+                ))}
+                
+                {/* Дни месяца */}
+                {months[monthKey].map(day => {
+                  const dayOfMonth = format(day.date, 'd');
+                  
+                  return (
+                    <div
+                      key={format(day.date, 'yyyy-MM-dd')}
+                      className={`
+                        h-36 border border-gray-700 p-1 relative overflow-hidden
+                        ${day.isWeekend ? 'bg-gray-900 opacity-60' : 'bg-gray-800'}
+                      `}
+                    >
+                      <div className="text-sm font-semibold mb-1">{dayOfMonth}</div>
+                      <div className="overflow-y-auto h-28 text-xs">
+                        {day.operations.map((op, idx) => {
+                          // Форматирование даты дедлайна
+                          const deadlineDate = new Date(op.deadline);
+                          
+                          // Проверка состояния дедлайна
+                          const isDeadlineClose = differenceInDays(deadlineDate, day.date) <= 7 && differenceInDays(deadlineDate, day.date) >= 0;
+                          const isOverdue = day.date > deadlineDate;
+                          
+                          return (
+                            <div 
+                              key={`${op.orderId}-${op.operationNumber}-${idx}`}
+                              className={`p-1 mb-1 rounded text-white ${
+                                isOverdue ? 'bg-red-800' : 
+                                isDeadlineClose ? 'bg-yellow-800' : 
+                                'bg-indigo-900'
+                              }`}
+                            >
+                              <div className="font-semibold truncate">{op.orderNumber}</div>
+                              <div>ID: {op.orderId}</div>
+                              <div className="flex justify-between">
+                                <span>Оп. #{op.operationNumber}</span>
+                                <span>Кол-во: {op.quantity}</span>
+                              </div>
+                              <div className="text-xs">
+                                Срок: {format(deadlineDate, 'dd.MM.yyyy')}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+  
+  // Отрисовка полной диаграммы Ганта для всех станков
+  const renderGanttChart = () => {
+    if (operationSchedules.length === 0) return (
+      <div className="text-center py-10 bg-gray-800 rounded-xl">
+        <p>Нет данных для отображения. Сначала распределите операции заказов по станкам.</p>
+      </div>
+    );
+    
+    // Группируем операции по станкам
+    const operationsByMachine: { [key: string]: OperationSchedule[] } = {};
+    
+    operationSchedules.forEach(op => {
+      if (!operationsByMachine[op.machineName]) {
+        operationsByMachine[op.machineName] = [];
+      }
+      operationsByMachine[op.machineName].push(op);
+    });
+    
+    return (
+      <div className="bg-gray-800 rounded-xl p-4">
+        <h3 className="text-xl font-semibold mb-4">Диаграмма загрузки станков</h3>
+        
+        <div className="overflow-x-auto">
+          <div className="min-w-max"> {/* Обеспечивает горизонтальную прокрутку */}
+            {/* Шкала времени */}
+            <div className="flex border-b border-gray-700 mb-2">
+              <div className="w-40 shrink-0"></div> {/* Место для названий станков */}
+              {eachDayOfInterval({ start: startDate, end: endDate }).map(date => {
+                const isWeekendDay = isWeekend(date);
+                
+                return (
+                  <div 
+                    key={format(date, 'yyyy-MM-dd')}
+                    className={`w-8 text-center text-xs py-1 ${isWeekendDay ? 'bg-gray-700' : ''}`}
+                  >
+                    {format(date, 'd')}
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Месяцы над шкалой времени */}
+            <div className="flex border-b border-gray-700 mb-4 mt-[-40px]">
+              <div className="w-40 shrink-0"></div>
+              {Object.entries(
+                eachDayOfInterval({ start: startDate, end: endDate }).reduce((acc: {[key: string]: number}, date) => {
+                  const month = format(date, 'yyyy-MM');
+                  if (!acc[month]) acc[month] = 0;
+                  acc[month]++;
+                  return acc;
+                }, {})
+              ).map(([month, days]) => {
+                const monthDate = new Date(month);
+                return (
+                  <div 
+                    key={month}
+                    className="flex-shrink-0 h-8 text-center text-xs py-1 border-r border-gray-700"
+                    style={{ width: `${days * 8}px` }}
+                  >
+                    {format(monthDate, 'LLLL', { locale: ru })}
+                  </div>
+                );
+              })}
+            </div>
+            
+            {/* Ряды для каждого станка */}
+            {Object.entries(operationsByMachine).map(([machineName, operations]) => (
+              <div key={machineName} className="flex mb-3 relative">
+                <div className="w-40 shrink-0 p-2 font-medium">
+                  {machineName}
+                </div>
+                
+                <div className="flex-grow relative h-10 bg-gray-900">
+                  {/* Отмечаем выходные дни */}
+                  {eachDayOfInterval({ start: startDate, end: endDate }).map(date => {
+                    const isWeekendDay = isWeekend(date);
+                    if (!isWeekendDay) return null;
+                    
+                    const dayIndex = Math.floor((date.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+                    
+                    return (
+                      <div 
+                        key={format(date, 'yyyy-MM-dd')}
+                        className="absolute h-full bg-gray-800 opacity-50"
+                        style={{ 
+                          left: `${dayIndex * 8}px`, 
+                          width: '8px' 
+                        }}
+                      ></div>
+                    );
+                  })}
+                  
+                  {/* Отображаем операции */}
+                  {operations.map(op => {
+                    const startDayIndex = Math.max(0, Math.floor((op.startDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+                    const endDayIndex = Math.floor((op.endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+                    const durationDays = Math.max(1, endDayIndex - startDayIndex + 1);
+                    
+                    if (startDayIndex < 0 && endDayIndex < 0) return null; // Пропускаем операции, которые закончились до диапазона
+                    
+                    // Проверяем дедлайн для определения цвета
+                    const deadlineDate = new Date(op.deadline);
+                    const isOverdue = op.endDate > deadlineDate;
+                    const isCloseToDeadline = differenceInDays(deadlineDate, op.endDate) <= 7 && !isOverdue;
+                    
+                    return (
+                      <div 
+                        key={`${op.orderId}-${op.operationNumber}`}
+                        className={`absolute h-8 rounded text-xs flex items-center justify-center overflow-hidden ${
+                          isOverdue ? 'bg-red-700' : 
+                          isCloseToDeadline ? 'bg-yellow-700' : 
+                          'bg-indigo-700'
+                        }`}
+                        style={{ 
+                          left: `${startDayIndex * 8}px`, 
+                          width: `${durationDays * 8}px`,
+                          top: '4px'
+                        }}
+                        title={`ID: ${op.orderId}, Чертеж: ${op.orderNumber}, Операция #${op.operationNumber}, Кол-во: ${op.quantity}, Срок: ${format(deadlineDate, 'dd.MM.yyyy')}`}
+                      >
+                        <span className="truncate px-1">{op.orderNumber} #{op.operationNumber}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white p-8">
+      <header className="flex justify-between items-center mb-10">
+        <h1 className="text-4xl font-bold">Календарь загрузки станков</h1>
+        <button 
+          className="bg-indigo-600 hover:bg-indigo-500 py-2 px-6 rounded-xl"
+          onClick={exportToExcel}
+        >
+          Экспорт в Excel
+        </button>
+      </header>
+
+      {loading ? (
+        <div className="text-center py-10">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-600"></div>
+          <p className="mt-2">Загрузка данных...</p>
+        </div>
+      ) : error ? (
+        <div className="bg-red-800 p-4 rounded-xl mb-6">
+          <p>{error}</p>
+          <button 
+            className="mt-2 px-4 py-2 bg-white text-red-800 rounded hover:bg-gray-200"
+            onClick={fetchOperationsFromDB}
+          >
+            Попробовать снова
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div>
+              <label className="block text-sm mb-2">Станок:</label>
+              <select
+                value={selectedMachine || ''}
+                onChange={(e) => setSelectedMachine(e.target.value)}
+                className="w-full p-3 rounded bg-gray-700 text-white"
+              >
+                {machines.map(machine => (
+                  <option key={machine.name} value={machine.name}>
+                    {machine.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm mb-2">Начальная дата:</label>
+                <input
+                  type="date"
+                  value={format(startDate, 'yyyy-MM-dd')}
+                  onChange={(e) => setStartDate(new Date(e.target.value))}
+                  className="w-full p-3 rounded bg-gray-700 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-2">Конечная дата:</label>
+                <input
+                  type="date"
+                  value={format(endDate, 'yyyy-MM-dd')}
+                  onChange={(e) => setEndDate(new Date(e.target.value))}
+                  className="w-full p-3 rounded bg-gray-700 text-white"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="mb-10">
+            <h2 className="text-2xl font-semibold mb-4">Диаграмма Ганта</h2>
+            {renderGanttChart()}
+          </div>
+
+          <div>
+            <h2 className="text-2xl font-semibold mb-4">Календарь по месяцам для {selectedMachine}</h2>
+            {renderSelectedMachineCalendar()}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
+export default MachineScheduleCalendar;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\Navbar.tsx
+import React from 'react';
+import { Link, useLocation } from 'react-router-dom';
+
+const Navbar: React.FC = () => {
+  const location = useLocation();
+
+  return (
+    <nav className="sticky top-0 z-50 bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 shadow-lg border-b border-gray-700">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between items-center py-4">
+          <Link
+            to="/"
+            className="text-white text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-400"
+          >
+            Factory Orders
+          </Link>
+          <div className="flex space-x-6">
+            {[
+              { path: '/', label: 'Главная' },
+              { path: '/orders', label: 'Заказы' },
+              { path: '/calculation', label: 'Расчет загрузки' },
+              { path: '/calendar', label: 'Календарь' },
+              { path: '/about', label: 'О системе' }
+            ].map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`relative px-2 py-2 rounded-lg text-lg font-medium transition-all duration-200 ${
+                  location.pathname === item.path
+                    ? 'text-white'
+                    : 'text-gray-400 hover:text-gray-200'
+                }`}
+              >
+                {item.label}
+                {location.pathname === item.path && (
+                  <span className="absolute bottom-0 left-0 w-full h-0.5 bg-indigo-500 rounded transform scale-x-100 transition-transform duration-300" />
+                )}
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+};
+
+export default Navbar;
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\OrderForm.tsx
+import React, { useState, useEffect } from 'react';
+import { createOrder, updateOrder, Order, Operation } from '../api/ordersApi';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+
+interface OrderFormProps {
+  onOrderCreated?: () => void;
+  initialOrder?: Order | null;
+  isEditing?: boolean;
+}
+
+interface OrderFormData {
+  machineName: string | null;
+  blueprintNumber: string;
+  startDate: Date | null;
+  deadline: Date;
+  quantity: number;
+  willMeetDeadline: boolean;
+  remainingQuantity: number;
+  priority: number;
+  status: string;
+}
+
+interface FormErrors {
+  blueprintNumber?: string;
+  deadline?: string;
+  quantity?: string;
+  operations?: string;
+}
+
+const OrderForm: React.FC<OrderFormProps> = ({ onOrderCreated, initialOrder, isEditing = false }) => {
+  const [formData, setFormData] = useState<OrderFormData>({
+    machineName: null,
+    blueprintNumber: '',
+    startDate: null,
+    deadline: new Date(),
+    quantity: 1,
+    willMeetDeadline: true,
+    remainingQuantity: 1,
+    priority: 1,
+    status: 'новый'
+  });
+
+  const [operations, setOperations] = useState<Operation[]>([
+    { opNumber: 1, opTime: 60, opAxes: '3х' }
+  ]);
+  
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [isStartDatePickerOpen, setIsStartDatePickerOpen] = useState(false);
+  const [isDeadlinePickerOpen, setIsDeadlinePickerOpen] = useState(false);
+  const [errors, setErrors] = useState<FormErrors>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Загружаем данные для редактирования
+  useEffect(() => {
+    console.log('OrderForm: initialOrder изменен', initialOrder);
+    console.log('OrderForm: isEditing', isEditing);
+    
+    if (initialOrder && isEditing) {
+      console.log('OrderForm: Загружаем данные для редактирования', initialOrder);
+      
+      setFormData({
+        machineName: initialOrder.machineName || null,
+        blueprintNumber: initialOrder.blueprintNumber || '',
+        startDate: initialOrder.startDate ? new Date(initialOrder.startDate) : null,
+        deadline: initialOrder.deadline ? new Date(initialOrder.deadline) : new Date(),
+        quantity: initialOrder.quantity,
+        willMeetDeadline: initialOrder.willMeetDeadline,
+        remainingQuantity: initialOrder.remainingQuantity,
+        priority: initialOrder.priority || 1,
+        status: initialOrder.status
+      });
+
+      // Загружаем операции
+      if (initialOrder.operations && initialOrder.operations.length > 0) {
+        setOperations(initialOrder.operations);
+      }
+    }
+  }, [initialOrder, isEditing]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    const { name, value, type } = e.target as HTMLInputElement; // Приведение типа для доступа к type
+    
+    setFormData((prev) => ({
+      ...prev,
+      [name]: type === 'number' ? Number(value) : 
+              type === 'checkbox' ? (e.target as HTMLInputElement).checked : 
+              // Для поля machineName, если значение пустое, устанавливаем null
+              name === 'machineName' && value === '' ? null : value,
+    }));
+
+    // Сбрасываем ошибку при изменении поля
+    if (name in errors) {
+      setErrors(prev => ({...prev, [name]: undefined}));
+    }
+  };
+
+  const handleDateChange = (date: Date | null, field: keyof OrderFormData) => {
+    if (field === 'startDate') {
+      setIsStartDatePickerOpen(false);
+    } else if (field === 'deadline') {
+      setIsDeadlinePickerOpen(false);
+    }
+    
+    setFormData((prev) => ({
+      ...prev,
+      [field]: date,
+    }));
+
+    // Сбрасываем ошибку при изменении поля
+    if (field in errors) {
+      setErrors(prev => ({...prev, [field]: undefined}));
+    }
+  };
+
+  const handleOperationChange = (index: number, field: keyof Operation, value: number | string) => {
+    const updatedOperations = [...operations];
+    
+    // Используем явное приведение типов с as unknown
+    if (field === 'opNumber' || field === 'opTime') {
+      (updatedOperations[index][field] as unknown) = Number(value);
+    } else if (field === 'opAxes') {
+      (updatedOperations[index][field] as unknown) = String(value);
+    }
+    
+    setOperations(updatedOperations);
+
+    // Сбрасываем ошибку операций при их изменении
+    if ('operations' in errors) {
+      setErrors(prev => ({...prev, operations: undefined}));
+    }
+  };
+
+  const addOperation = () => {
+    if (operations.length < 6) {
+      setOperations([...operations, { opNumber: operations.length + 1, opTime: 60, opAxes: '3х' }]);
+      
+      // Сбрасываем ошибку операций при добавлении новой операции
+      if ('operations' in errors) {
+        setErrors(prev => ({...prev, operations: undefined}));
+      }
+    }
+  };
+
+  const removeOperation = (index: number) => {
+    if (operations.length > 1) {
+      const updatedOperations = operations.filter((_, i) => i !== index);
+      setOperations(updatedOperations);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      setPdfFile(e.target.files[0]);
+    } else {
+      setPdfFile(null);
+    }
+  };
+
+  // Валидация формы
+  const validateForm = (): boolean => {
+    const newErrors: FormErrors = {};
+    
+    // Проверка номера чертежа
+    if (!formData.blueprintNumber.trim()) {
+      newErrors.blueprintNumber = 'Номер чертежа обязателен';
+    }
+    
+    // Проверка срока задачи
+    if (!formData.deadline) {
+      newErrors.deadline = 'Срок задачи обязателен';
+    }
+    
+    // Проверка количества
+    if (!formData.quantity || formData.quantity <= 0) {
+      newErrors.quantity = 'Количество должно быть больше нуля';
+    }
+    
+    // Проверка наличия операций
+    if (operations.length === 0) {
+      newErrors.operations = 'Добавьте хотя бы одну операцию';
+    }
+    
+    setErrors(newErrors);
+    
+    // Форма валидна, если нет ошибок
+    return Object.keys(newErrors).length === 0;
+  };
+
+  // Обработчик отправки формы
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Проверяем валидность формы
+    if (!validateForm()) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+
+    try {
+      // Создаем общий объект данных заказа в формате для API
+      // Используя as any, мы можем добавить snake_case поля без ошибок TypeScript
+      const orderPayload: any = {
+        // Используем поля в snake_case для API
+        "machine_name": formData.machineName,
+        "blueprint_number": formData.blueprintNumber,
+        "start_date": formData.startDate ? formData.startDate.toISOString() : new Date().toISOString(),
+        "deadline": formData.deadline.toISOString(),
+        "quantity": formData.quantity,
+        "drawing_url": `http://example.com/drawings/${formData.blueprintNumber}`,
+        "will_meet_deadline": formData.willMeetDeadline,
+        "time_margin": 0,
+        "completed_quantity": isEditing && initialOrder && initialOrder.completedQuantity ? initialOrder.completedQuantity : 0,
+        "remaining_quantity": isEditing && initialOrder && initialOrder.completedQuantity ? 
+                            formData.quantity - initialOrder.completedQuantity : 
+                            formData.quantity,
+        "priority": formData.priority,
+        "status": formData.status
+      };
+      
+      // Преобразуем операции в формат для сервера
+      if (operations && operations.length > 0) {
+        orderPayload.operations = operations.map(op => ({
+          "op_number": op.opNumber,
+          "op_time": op.opTime,
+          "op_axes": op.opAxes
+        }));
+      }
+      
+      console.log(`${isEditing ? 'Обновляем' : 'Создаем'} заказ:`, orderPayload);
+      
+      if (isEditing && initialOrder?.id) {
+        // Если редактируем существующий заказ
+        await updateOrder(initialOrder.id, orderPayload);
+        alert('✅ Заказ успешно обновлен');
+      } else {
+        // Если создаем новый заказ
+        await createOrder(orderPayload);
+        alert('✅ Заказ успешно создан');
+      }
+      
+      if (onOrderCreated) onOrderCreated();
+      
+      // Сбрасываем форму
+      setFormData({
+        machineName: null,
+        blueprintNumber: '',
+        startDate: null,
+        deadline: new Date(),
+        quantity: 1,
+        willMeetDeadline: true,
+        remainingQuantity: 1,
+        priority: 1,
+        status: 'новый'
+      });
+      setOperations([{ opNumber: 1, opTime: 60, opAxes: '3х' }]);
+      setPdfFile(null);
+      setErrors({});
+      
+    } catch (error: any) {
+      console.error('Ошибка:', error.message);
+      alert(`Ошибка: ${error.message}`);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <form
+      onSubmit={handleSubmit}
+      className="max-w-md mx-auto mt-10 bg-gray-800 p-6 rounded-xl shadow-2xl"
+    >
+      <h2 className="text-2xl font-semibold mb-6 text-center">
+        {isEditing ? 'Редактировать заказ' : 'Создать новый заказ'}
+      </h2>
+
+      <div className="mb-4">
+        <label className="block text-sm mb-1">Станок (необязательно)</label>
+        <select
+          name="machineName"
+          value={formData.machineName || ''}
+          onChange={handleChange}
+          className="w-full p-3 rounded bg-gray-700 text-white"
+        >
+          <option value="">Выберите станок</option>
+          <option value="Doosan Hadasha">Doosan Hadasha</option>
+          <option value="Doosan Yashana">Doosan Yashana</option>
+          <option value="Pinnacle Gdola">Pinnacle Gdola</option>
+          <option value="Pinnacle Ktana">Pinnacle Ktana</option>
+          <option value="Mitsubishi">Mitsubishi</option>
+          <option value="Okuma">Okuma</option>
+          <option value="JohnFord">JohnFord</option>
+        </select>
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-sm mb-1">
+          Номер чертежа <span className="text-red-500">*</span>
+        </label>
+        <input
+          type="text"
+          name="blueprintNumber"
+          placeholder="Введите номер чертежа"
+          value={formData.blueprintNumber}
+          onChange={handleChange}
+          required
+          className={`w-full p-3 rounded bg-gray-700 text-white ${errors.blueprintNumber ? 'border border-red-500' : ''}`}
+        />
+        {errors.blueprintNumber && (
+          <p className="text-red-500 text-xs mt-1">{errors.blueprintNumber}</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="block text-sm mb-1">Дата начала (необязательно)</label>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Выберите дату начала"
+              value={formData.startDate ? formData.startDate.toLocaleDateString() : ''}
+              onClick={() => setIsStartDatePickerOpen(!isStartDatePickerOpen)}
+              className="w-full p-3 rounded bg-gray-700 text-white cursor-pointer"
+              readOnly
+            />
+            {isStartDatePickerOpen && (
+              <div className="absolute z-10 mt-1">
+                <DatePicker
+                  selected={formData.startDate}
+                  onChange={(date) => handleDateChange(date, 'startDate')}
+                  dateFormat="yyyy-MM-dd"
+                  inline
+                  onClickOutside={() => setIsStartDatePickerOpen(false)}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+        <div>
+          <label className="block text-sm mb-1">
+            Срок сдачи <span className="text-red-500">*</span>
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Выберите срок сдачи"
+              value={formData.deadline ? formData.deadline.toLocaleDateString() : ''}
+              onClick={() => setIsDeadlinePickerOpen(!isDeadlinePickerOpen)}
+              className={`w-full p-3 rounded bg-gray-700 text-white cursor-pointer ${errors.deadline ? 'border border-red-500' : ''}`}
+              readOnly
+              required
+            />
+            {isDeadlinePickerOpen && (
+              <div className="absolute z-10 mt-1">
+                <DatePicker
+                  selected={formData.deadline}
+                  onChange={(date) => handleDateChange(date, 'deadline')}
+                  dateFormat="yyyy-MM-dd"
+                  inline
+                  onClickOutside={() => setIsDeadlinePickerOpen(false)}
+                />
+              </div>
+            )}
+            {errors.deadline && (
+              <p className="text-red-500 text-xs mt-1">{errors.deadline}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-4 mb-4">
+        <div>
+          <label className="block text-sm mb-1">
+            Количество <span className="text-red-500">*</span>
+          </label>
+          <input
+            type="number"
+            name="quantity"
+            placeholder="Укажите количество"
+            value={formData.quantity}
+            min={1}
+            onChange={handleChange}
+            required
+            className={`w-full p-3 rounded bg-gray-700 text-white ${errors.quantity ? 'border border-red-500' : ''}`}
+          />
+          {errors.quantity && (
+            <p className="text-red-500 text-xs mt-1">{errors.quantity}</p>
+          )}
+        </div>
+        <div>
+          <label className="block text-sm mb-1">Приоритет</label>
+          <input
+            type="number"
+            name="priority"
+            placeholder="Приоритет"
+            value={formData.priority}
+            min={1}
+            max={10}
+            onChange={handleChange}
+            required
+            className="w-full p-3 rounded bg-gray-700 text-white"
+          />
+        </div>
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-sm mb-1">Статус</label>
+        <select
+          name="status"
+          value={formData.status}
+          onChange={handleChange}
+          required
+          className="w-full p-3 rounded bg-gray-700 text-white"
+        >
+          <option value="новый">Новый</option>
+          <option value="в работе">В работе</option>
+          <option value="приостановлен">Приостановлен</option>
+          <option value="завершен">Завершен</option>
+        </select>
+      </div>
+
+      <div className="mb-4 flex items-center">
+        <input
+          type="checkbox"
+          name="willMeetDeadline"
+          checked={formData.willMeetDeadline}
+          onChange={handleChange}
+          className="mr-2"
+        />
+        <label>Срок будет выдержан</label>
+      </div>
+
+      <div className="mb-4">
+        <div className="flex justify-between items-center mb-2">
+          <label className="text-sm font-medium">
+            Операции (до 6) <span className="text-red-500">*</span>
+          </label>
+          <button 
+            type="button" 
+            onClick={addOperation}
+            disabled={operations.length >= 6}
+            className="bg-blue-600 hover:bg-blue-500 px-2 py-1 rounded text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            + Добавить
+          </button>
+        </div>
+        
+        {errors.operations && (
+          <p className="text-red-500 text-xs mb-2">{errors.operations}</p>
+        )}
+        
+        <div className={`${errors.operations ? 'border border-red-500 rounded p-2 mb-2' : ''}`}>
+          {operations.map((op, index) => (
+            <div key={index} className="bg-gray-700 p-3 rounded mb-2">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm font-medium">Операция #{index + 1}</span>
+                {operations.length > 1 && (
+                  <button 
+                    type="button" 
+                    onClick={() => removeOperation(index)}
+                    className="bg-red-600 hover:bg-red-500 px-2 py-1 rounded text-xs"
+                  >
+                    Удалить
+                  </button>
+                )}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <div>
+                  <label className="block text-xs mb-1">Номер операции</label>
+                  <input
+                    type="number"
+                    value={op.opNumber}
+                    onChange={(e) => handleOperationChange(index, 'opNumber', parseInt(e.target.value))}
+                    min={1}
+                    required
+                    className="w-full p-2 rounded bg-gray-600 text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs mb-1">Время (мин)</label>
+                  <input
+                    type="number"
+                    value={op.opTime}
+                    onChange={(e) => handleOperationChange(index, 'opTime', parseInt(e.target.value))}
+                    min={1}
+                    required
+                    className="w-full p-2 rounded bg-gray-600 text-white text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs mb-1">Оси</label>
+                  <select
+                    value={op.opAxes}
+                    onChange={(e) => handleOperationChange(index, 'opAxes', e.target.value)}
+                    required
+                    className="w-full p-2 rounded bg-gray-600 text-white text-sm"
+                  >
+                    <option value="3х">3х осевая</option>
+                    <option value="4х">4х осевая</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {!isEditing && (
+        <div className="mb-6">
+          <label className="block text-sm mb-1">PDF чертежа (необязательно)</label>
+          <input
+            type="file"
+            accept="application/pdf"
+            onChange={handleFileChange}
+            className="w-full p-3 rounded bg-gray-700 text-white"
+          />
+          {pdfFile && (
+            <div className="mt-2 bg-gray-600 p-2 rounded flex justify-between items-center">
+              <span className="truncate text-sm">{pdfFile.name}</span>
+              <button 
+                type="button" 
+                onClick={() => setPdfFile(null)}
+                className="bg-red-600 hover:bg-red-500 px-2 py-1 rounded-lg text-xs ml-2"
+              >
+                Удалить
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      
+      <div className="mt-6">
+        <p className="text-xs text-gray-400 mb-4">Поля, отмеченные <span className="text-red-500">*</span>, обязательны для заполнения</p>
+        
+        <button
+          type="submit"
+          disabled={isSubmitting}
+          className="bg-indigo-600 hover:bg-indigo-500 py-3 px-6 rounded-xl w-full text-white font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          {isSubmitting ? (
+            <span className="flex items-center justify-center">
+              <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+              </svg>
+              Обработка...
+            </span>
+          ) : (
+            isEditing ? 'Сохранить изменения' : 'Создать заказ'
+          )}
+        </button>
+      </div>
+    </form>
+  );
+};
+
+export default OrderForm;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\ordersAdapter.ts
+import { Order, Operation } from '../api/ordersApi';
+
+// Интерфейс для объектов в формате snake_case, как они хранятся в БД
+interface DbOrder {
+  id: number;
+  machine_name?: string;
+  blueprint_number: string;
+  start_date: string;
+  deadline: string;
+  quantity: number;
+  drawing_url?: string;
+  will_meet_deadline: boolean;
+  time_margin: number;
+  completed_quantity: number;
+  remaining_quantity: number;
+  priority: number;
+  status: string;
+  operations?: DbOperation[];
+}
+
+interface DbOperation {
+  id?: number;
+  op_number: number;
+  op_time: number;
+  op_axes: string;
+}
+
+// Преобразование из формата БД (snake_case) в формат приложения (camelCase)
+export function dbToAppOrder(dbOrder: any): Order {
+  console.log('Преобразование из DB в App формат:', dbOrder);
+  
+  const appOrder: Order = {
+    id: dbOrder.id,
+    machineName: dbOrder.machine_name,
+    blueprintNumber: dbOrder.blueprint_number,
+    startDate: dbOrder.start_date,
+    deadline: dbOrder.deadline,
+    quantity: dbOrder.quantity,
+    drawingUrl: dbOrder.drawing_url,
+    willMeetDeadline: dbOrder.will_meet_deadline,
+    timeMargin: dbOrder.time_margin,
+    completedQuantity: dbOrder.completed_quantity,
+    remainingQuantity: dbOrder.remaining_quantity,
+    priority: dbOrder.priority,
+    status: dbOrder.status
+  };
+  
+  if (dbOrder.operations && Array.isArray(dbOrder.operations)) {
+    appOrder.operations = dbOrder.operations.map((op: DbOperation) => ({
+      opNumber: op.op_number,
+      opTime: op.op_time,
+      opAxes: op.op_axes
+    }));
+  }
+  
+  return appOrder;
+}
+
+// Преобразование из формата приложения (camelCase) в формат БД (snake_case)
+export function appToDbOrder(appOrder: Partial<Order>): Partial<DbOrder> {
+  console.log('Преобразование из App в DB формат:', appOrder);
+  
+  const dbOrder: Partial<DbOrder> = {
+    machine_name: appOrder.machineName,
+    blueprint_number: appOrder.blueprintNumber,
+    start_date: appOrder.startDate,
+    deadline: appOrder.deadline,
+    quantity: appOrder.quantity,
+    drawing_url: appOrder.drawingUrl,
+    will_meet_deadline: appOrder.willMeetDeadline,
+    time_margin: appOrder.timeMargin,
+    completed_quantity: appOrder.completedQuantity,
+    remaining_quantity: appOrder.remainingQuantity,
+    priority: appOrder.priority,
+    status: appOrder.status
+  };
+  
+  if (appOrder.operations && Array.isArray(appOrder.operations)) {
+    dbOrder.operations = appOrder.operations.map((op: Operation) => {
+      // Создаем объект без id сначала
+      const dbOp: DbOperation = {
+        op_number: op.opNumber,
+        op_time: op.opTime,
+        op_axes: op.opAxes
+      };
+      
+      // Добавляем id только если оно существует в оригинальном объекте
+      if ('id' in op) {
+        // Используем as any для обхода проверки типов
+        dbOp.id = (op as any).id;
+      }
+      
+      return dbOp;
+    });
+  }
+  
+  return dbOrder;
+}
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\OrdersList.tsx
+import React, { useState } from 'react';
+import { Order } from '../api/ordersApi';
+
+interface OrdersListProps {
+  orders: Order[];
+  onDelete: (id: number) => void;
+  onSelect: (id: number) => void;
+  onComplete: (id: number) => void;
+}
+
+const OrdersList: React.FC<OrdersListProps> = ({ orders, onDelete, onSelect, onComplete }) => {
+  // Состояние для отображения списка заказов
+  const [showOrdersList, setShowOrdersList] = useState<boolean>(false);
+  
+  // Состояние для хранения ID развернутых заказов
+  const [expandedOrderIds, setExpandedOrderIds] = useState<number[]>([]);
+
+  // Функция для переключения состояния развернутости заказа
+  const toggleOrderExpanded = (id: number) => {
+    if (expandedOrderIds.includes(id)) {
+      setExpandedOrderIds(expandedOrderIds.filter(orderId => orderId !== id));
+    } else {
+      setExpandedOrderIds([...expandedOrderIds, id]);
+    }
+  };
+
+  // Функция для переключения отображения всего списка заказов
+  const toggleOrdersList = () => {
+    setShowOrdersList(!showOrdersList);
+  };
+
+  return (
+    <div className="bg-gray-800 rounded-xl shadow-lg">
+      {/* Кликабельный заголовок "Распределить" */}
+      <div 
+        className="p-4 bg-gray-700 rounded-t-xl flex justify-between items-center cursor-pointer"
+        onClick={toggleOrdersList}
+      >
+        <h2 className="text-xl font-semibold">Распределить</h2>
+        <span className="text-gray-400">
+          {showOrdersList ? '▼' : '▶'}
+        </span>
+      </div>
+      
+      {/* Список заказов (отображается только если showOrdersList == true) */}
+      {showOrdersList && (
+        <div className="p-4">
+          {orders.length === 0 ? (
+            <div className="text-center py-6">
+              <p className="text-gray-400">Нет заказов для отображения</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {orders.map((order) => {
+                const isExpanded = expandedOrderIds.includes(order.id);
+                
+                return (
+                  <div 
+                    key={order.id} 
+                    className="bg-gray-800 rounded p-3 border-l-4"
+                    style={{ 
+                      borderLeftColor: 
+                        order.status === 'новый' ? '#6366F1' : 
+                        order.status === 'в работе' ? '#F59E0B' : 
+                        order.status === 'завершен' ? '#10B981' : 
+                        '#6B7280'
+                    }}
+                  >
+                    <div 
+                      className="flex justify-between items-center cursor-pointer"
+                      onClick={() => toggleOrderExpanded(order.id)}
+                    >
+                      <div className="flex items-center">
+                        <span className="font-medium">{order.blueprintNumber}</span>
+                        {order.priority > 1 && (
+                          <span className="ml-2 px-2 py-0.5 bg-red-600 rounded-lg text-xs">
+                            Приоритет: {order.priority}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center">
+                        <span 
+                          className={`px-2 py-0.5 rounded-full text-xs mr-2 ${
+                            order.status === 'новый' ? 'bg-indigo-900 text-indigo-200' : 
+                            order.status === 'в работе' ? 'bg-yellow-800 text-yellow-200' : 
+                            order.status === 'завершен' ? 'bg-green-800 text-green-200' : 
+                            'bg-gray-700 text-gray-300'
+                          }`}
+                        >
+                          {order.status}
+                        </span>
+                        <span className="text-gray-400 text-xs">
+                          {isExpanded ? '▼' : '▶'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {isExpanded && (
+                      <div className="mt-3 pl-3 border-l border-gray-700">
+                        <div className="grid grid-cols-2 gap-2 mb-3 text-sm">
+                          <div>
+                            <span className="text-gray-400">Количество:</span>
+                            <span className="ml-1">{order.quantity} шт.</span>
+                          </div>
+                          {order.machineName && (
+                            <div>
+                              <span className="text-gray-400">Станок:</span>
+                              <span className="ml-1">{order.machineName}</span>
+                            </div>
+                          )}
+                          <div>
+                            <span className="text-gray-400">Срок:</span>
+                            <span className="ml-1">{order.deadline ? new Date(order.deadline).toLocaleDateString() : 'Не указан'}</span>
+                          </div>
+                          <div>
+                            <span className="text-gray-400">Выполнено:</span>
+                            <span className="ml-1">{order.completedQuantity} из {order.quantity} шт.</span>
+                          </div>
+                        </div>
+
+                        {order.operations && order.operations.length > 0 && (
+                          <div className="mb-3">
+                            <p className="text-gray-400 text-sm mb-1">Операции:</p>
+                            <div className="grid grid-cols-3 gap-2 text-xs">
+                              {order.operations.map((op, index) => (
+                                <div key={index} className="bg-gray-700 p-1.5 rounded">
+                                  <div className="flex justify-between">
+                                    <span>#{op.opNumber}</span>
+                                    <span>{op.opAxes}</span>
+                                  </div>
+                                  <div className="text-right">{op.opTime} мин.</div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex justify-end gap-2 mt-2" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => onSelect(order.id)}
+                            className="bg-blue-600 hover:bg-blue-500 py-0.5 px-2 rounded text-xs"
+                          >
+                            Редактировать
+                          </button>
+                          {order.status !== 'завершен' && (
+                            <button
+                              onClick={() => onComplete(order.id)}
+                              className="bg-green-600 hover:bg-green-500 py-0.5 px-2 rounded text-xs"
+                            >
+                              Завершить
+                            </button>
+                          )}
+                          <button
+                            onClick={() => onDelete(order.id)}
+                            className="bg-red-600 hover:bg-red-500 py-0.5 px-2 rounded text-xs"
+                          >
+                            Удалить
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default OrdersList;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\OrdersPage.tsx
+import React, { useState, useEffect } from 'react';
+import { fetchOrders, deleteOrder, updateOrder, getOrderById, Order } from '../api/ordersApi';
+import OrderForm from './OrderForm';
+import OrdersList from './OrdersList';
+import MachineOrdersList from './MachineOrdersList';
+import * as XLSX from 'xlsx';
+import { saveAs } from 'file-saver';
+
+const OrdersPage: React.FC = () => {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [formVisible, setFormVisible] = useState<boolean>(false);
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  // Новое состояние для переключения между "Распределить" и "Назначено на станки"
+  const [activeTab, setActiveTab] = useState<'distribute' | 'assigned'>('distribute');
+
+  useEffect(() => {
+    loadOrders();
+  }, []);
+
+  useEffect(() => {
+    if (selectedOrderId) {
+      loadOrderDetails(selectedOrderId);
+    }
+  }, [selectedOrderId]);
+
+  const loadOrders = async () => {
+    setIsLoading(true);
+    try {
+      const data = await fetchOrders();
+      setOrders(data);
+    } catch (error) {
+      console.error('Ошибка при загрузке заказов:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadOrderDetails = async (id: number) => {
+    console.log('Загрузка деталей заказа с ID:', id);
+    try {
+      const response = await getOrderById(id);
+      console.log('Получены детали заказа (оригинал):', response);
+      
+      // Проверяем наличие свойств в snake_case и адаптируем их
+      const orderDetails = {
+        ...response,
+        // Проверяем наличие свойств и их типы безопасным способом
+        blueprintNumber: response.blueprintNumber || ((response as any).blueprint_number) || '',
+        machineName: response.machineName || ((response as any).machine_name),
+        startDate: response.startDate || ((response as any).start_date),
+        willMeetDeadline: response.willMeetDeadline !== undefined ? response.willMeetDeadline : ((response as any).will_meet_deadline),
+        completedQuantity: response.completedQuantity !== undefined ? response.completedQuantity : ((response as any).completed_quantity),
+        remainingQuantity: response.remainingQuantity !== undefined ? response.remainingQuantity : ((response as any).remaining_quantity)
+      };
+      
+      console.log('Адаптированные детали заказа:', orderDetails);
+      setOrderToEdit(orderDetails);
+      setFormVisible(true);
+      setIsEditing(true);
+    } catch (error) {
+      console.error('Ошибка при загрузке деталей заказа:', error);
+      setSelectedOrderId(null);
+    }
+  };
+
+  const handleOrderCreated = () => {
+    loadOrders();
+    setFormVisible(false);
+    setSelectedOrderId(null);
+    setOrderToEdit(null);
+    setIsEditing(false);
+  };
+
+  const handleCancelEdit = () => {
+    setFormVisible(false);
+    setSelectedOrderId(null);
+    setOrderToEdit(null);
+    setIsEditing(false);
+  };
+
+  const handleSelectOrder = (id: number) => {
+    console.log('Выбран заказ с ID:', id);
+    setSelectedOrderId(id);
+  };
+
+  const filteredOrders = statusFilter === 'all'
+    ? orders
+    : orders.filter((order) => order.status === statusFilter);
+
+  const exportToExcel = () => {
+    const worksheet = XLSX.utils.json_to_sheet(filteredOrders);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Orders");
+    const excelBuffer = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
+    const fileData = new Blob([excelBuffer], { type: 'application/octet-stream' });
+    saveAs(fileData, 'factory_orders.xlsx');
+  };
+
+  const handleDelete = async (id: number) => {
+    if (window.confirm('Вы уверены, что хотите удалить этот заказ?')) {
+      try {
+        await deleteOrder(id);
+        loadOrders();
+      } catch (error) {
+        console.error('Ошибка при удалении заказа:', error);
+      }
+    }
+  };
+
+  const handleComplete = async (id: number) => {
+    try {
+      await updateOrder(id, { status: 'завершен' });
+      loadOrders();
+    } catch (error) {
+      console.error('Ошибка при завершении заказа:', error);
+    }
+  };
+
+  // Обработчик для отметки операции как выполненной
+  const handleMarkCompleted = (orderId: number, operationNumber: number, isCompleted: boolean) => {
+    console.log(`Операция #${operationNumber} заказа ${orderId} отмечена как ${isCompleted ? 'выполненная' : 'невыполненная'}`);
+    // В реальном приложении здесь должна быть логика обновления статуса операции
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white p-8">
+      <header className="flex justify-between items-center mb-10">
+        <h1 className="text-4xl font-bold">Factory Orders Dashboard</h1>
+        <div className="flex space-x-4">
+          <button
+            className="bg-indigo-600 hover:bg-indigo-500 py-2 px-6 rounded-xl"
+            onClick={() => window.location.href = '/calculation'}
+          >
+            Рассчитать
+          </button>
+          <button
+            className="bg-indigo-600 hover:bg-indigo-500 py-2 px-6 rounded-xl"
+            onClick={() => window.location.href = '/calendar'}
+          >
+            Календарь
+          </button>
+          <button
+            className="bg-indigo-600 hover:bg-indigo-500 py-2 px-6 rounded-xl"
+            onClick={exportToExcel}
+          >
+            Экспорт в Excel
+          </button>
+        </div>
+      </header>
+
+      <div className="flex justify-center mb-8">
+        {!isEditing && (
+          <button
+            className="bg-green-600 hover:bg-green-500 py-2 px-6 rounded-xl"
+            onClick={() => {
+              setFormVisible(!formVisible);
+              setSelectedOrderId(null);
+              setOrderToEdit(null);
+              setIsEditing(false);
+            }}
+          >
+            {formVisible ? 'Скрыть форму' : 'Создать заказ'}
+          </button>
+        )}
+      </div>
+
+      {formVisible && (
+        <div>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-2xl font-bold">{isEditing ? 'Редактировать заказ' : 'Создать заказ'}</h2>
+            {isEditing && (
+              <button
+                className="bg-gray-600 hover:bg-gray-500 py-1 px-4 rounded-xl text-sm"
+                onClick={handleCancelEdit}
+              >
+                Отмена
+              </button>
+            )}
+          </div>
+          <OrderForm
+            onOrderCreated={handleOrderCreated}
+            initialOrder={orderToEdit}
+            isEditing={isEditing}
+          />
+        </div>
+      )}
+
+      {/* Вкладки для переключения между "Распределить" и "Назначено на станки" */}
+      <div className="flex border-b border-gray-700 mb-6">
+        <button
+          className={`py-2 px-4 ${activeTab === 'distribute' ? 'border-b-2 border-indigo-500 text-indigo-400' : 'text-gray-400'}`}
+          onClick={() => setActiveTab('distribute')}
+        >
+          Распределить
+        </button>
+        <button
+          className={`py-2 px-4 ${activeTab === 'assigned' ? 'border-b-2 border-indigo-500 text-indigo-400' : 'text-gray-400'}`}
+          onClick={() => setActiveTab('assigned')}
+        >
+          Назначено на станки
+        </button>
+      </div>
+
+      {activeTab === 'distribute' && (
+        <>
+          <div className="mt-8 flex gap-4">
+            <button onClick={() => setStatusFilter('all')} className={`px-4 py-2 rounded-xl ${statusFilter === 'all' ? 'bg-indigo-600' : 'bg-gray-700'}`}>Все</button>
+            <button onClick={() => setStatusFilter('новый')} className={`px-4 py-2 rounded-xl ${statusFilter === 'новый' ? 'bg-indigo-600' : 'bg-gray-700'}`}>Новые</button>
+            <button onClick={() => setStatusFilter('в работе')} className={`px-4 py-2 rounded-xl ${statusFilter === 'в работе' ? 'bg-indigo-600' : 'bg-gray-700'}`}>В работе</button>
+            <button onClick={() => setStatusFilter('завершен')} className={`px-4 py-2 rounded-xl ${statusFilter === 'завершен' ? 'bg-indigo-600' : 'bg-gray-700'}`}>Завершённые</button>
+          </div>
+
+          {isLoading ? (
+            <div className="text-center py-10">
+              <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-600"></div>
+              <p className="mt-2">Загрузка заказов...</p>
+            </div>
+          ) : (
+            <div className="mt-12 h-[500px] overflow-y-auto pr-2">
+              <OrdersList
+                orders={filteredOrders}
+                onDelete={handleDelete}
+                onSelect={handleSelectOrder}
+                onComplete={handleComplete}
+              />
+            </div>
+          )}
+        </>
+      )}
+
+      {activeTab === 'assigned' && (
+        <div className="mt-8">
+          <MachineOrdersList onMarkCompleted={handleMarkCompleted} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default OrdersPage;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\PdfViewer.tsx
+import React, { useState } from 'react';
+
+interface PdfViewerProps {
+  pdfUrl: string;
+  previewOnly?: boolean;
+}
+
+const PdfViewer: React.FC<PdfViewerProps> = ({ pdfUrl, previewOnly = false }) => {
+  const [isExpanded, setIsExpanded] = useState(false);
+
+  const handleClick = () => {
+    if (previewOnly) {
+      alert('Просмотр PDF недоступен в режиме разработки.\nВ рабочем режиме здесь будет открываться реальный PDF-файл.');
+      return;
+    }
+    
+    setIsExpanded(!isExpanded);
+  };
+
+  return (
+    <div>
+      <div 
+        className="cursor-pointer bg-gray-700 p-2 rounded-lg text-center hover:bg-gray-600 transition"
+        onClick={handleClick}
+      >
+        <span className="text-blue-400">Просмотр PDF</span>
+      </div>
+      
+      {isExpanded && !previewOnly && (
+        <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+          <div className="bg-white w-full max-w-4xl h-5/6 rounded-lg overflow-hidden flex flex-col">
+            <div className="bg-gray-200 p-2 flex justify-between items-center">
+              <h3 className="text-black font-medium">Просмотр PDF</h3>
+              <button 
+                className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                onClick={() => setIsExpanded(false)}
+              >
+                Закрыть
+              </button>
+            </div>
+            <div className="flex-grow">
+              <iframe 
+                src={pdfUrl} 
+                className="w-full h-full" 
+                title="PDF Preview"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default PdfViewer;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\SearchBar.tsx
+import React, { useState } from 'react';
+
+interface SearchBarProps {
+  onSearch: (term: string, machineFilter: string) => void;
+}
+
+const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
+  const [term, setTerm] = useState('');
+  const [machineFilter, setMachineFilter] = useState('all');
+
+  return (
+    <div className="flex gap-4 mb-6">
+      <input
+        type="text"
+        placeholder="Поиск по ID или Blueprint"
+        value={term}
+        onChange={(e) => setTerm(e.target.value)}
+        className="p-3 rounded bg-gray-700 text-white w-full"
+      />
+      <select
+        value={machineFilter}
+        onChange={(e) => setMachineFilter(e.target.value)}
+        className="p-3 rounded bg-gray-700 text-white"
+      >
+        <option value="all">Все станки</option>
+        <option value="Doosan Hadasha">Doosan Hadasha</option>
+        <option value="Doosan Yashana">Doosan Yashana</option>
+        <option value="Pinnacle Gdola">Pinnacle Gdola</option>
+        <option value="Pinnacle Ktana">Pinnacle Ktana</option>
+        <option value="Mitsubishi">Mitsubishi</option>
+        <option value="Okuma">Okuma</option>
+        <option value="JohnFord">JohnFord</option>
+      </select>
+      <button
+        onClick={() => onSearch(term, machineFilter)}
+        className="bg-indigo-600 hover:bg-indigo-500 px-6 rounded"
+      >
+        🔍 Найти
+      </button>
+    </div>
+  );
+};
+
+export default SearchBar;
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\models\ScheduleModels.ts
+// src/models/ScheduleModels.ts
+
+// Типы для хранения распределения заказов по станкам
+export interface MachineSchedule {
+    machineName: string;      // Название станка
+    assignments: OrderAssignment[];  // Назначенные заказы
+    utilization: number;      // Процент загрузки станка
+    availableFrom: string;    // Дата, с которой станок доступен
+  }
+  
+  export interface OrderAssignment {
+    orderId: number;          // ID заказа
+    orderNumber: string;      // Номер заказа (чертежа)
+    operationId?: number;     // ID операции
+    operationNumber: number;  // Номер операции
+    startTime: string;        // Время начала выполнения
+    endTime: string;          // Время окончания выполнения
+    duration: number;         // Продолжительность в минутах
+    isCompleted: boolean;     // Отметка о выполнении
+  }
+  
+  // Интерфейс для хранения состояния планирования
+  export interface ScheduleState {
+    machines: MachineSchedule[];         // Распределение по станкам
+    unassignedOrders: number[];          // ID заказов, которые не распределены
+    lastCalculationDate: string;         // Время последнего расчета
+    isScheduleActive: boolean;           // Активно ли расписание
+  }
+  
+  // Функции для работы с localStorage
+  
+  // Сохранение состояния планирования
+  export const saveScheduleState = (state: ScheduleState): void => {
+    localStorage.setItem('factoryScheduleState', JSON.stringify(state));
+  };
+  
+  // Загрузка состояния планирования
+  export const loadScheduleState = (): ScheduleState | null => {
+    const savedState = localStorage.getItem('factoryScheduleState');
+    if (savedState) {
+      try {
+        return JSON.parse(savedState);
+      } catch (e) {
+        console.error('Ошибка при загрузке данных планирования:', e);
+        return null;
+      }
+    }
+    return null;
+  };
+  
+  // Очистка состояния планирования
+  export const clearScheduleState = (): void => {
+    localStorage.removeItem('factoryScheduleState');
+  };
+  
+  // Функция для проверки, распределен ли заказ
+  export const isOrderAssigned = (state: ScheduleState, orderId: number): boolean => {
+    if (!state || !state.machines) return false;
+    
+    return state.machines.some(machine => 
+      machine.assignments.some(assignment => assignment.orderId === orderId)
+    );
+  };
+  
+  // Функция для получения всех заказов, отмеченных как выполненные
+  export const getCompletedAssignments = (state: ScheduleState): OrderAssignment[] => {
+    if (!state || !state.machines) return [];
+    
+    return state.machines.flatMap(machine => 
+      machine.assignments.filter(assignment => assignment.isCompleted)
+    );
+  };
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\styles\globals.css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\types\order.ts
+export interface Order {
+    id: number;
+    machineName: string;
+    blueprintNumber: string;
+    deadline: string;
+    quantity: number;
+    pdfPath?: string;
+  }
+  
+
+================================================================================
+

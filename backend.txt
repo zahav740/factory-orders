@@ -1,0 +1,617 @@
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\app.controller.spec.ts
+import { Test, TestingModule } from '@nestjs/testing';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+
+describe('AppController', () => {
+  let appController: AppController;
+
+  beforeEach(async () => {
+    const app: TestingModule = await Test.createTestingModule({
+      controllers: [AppController],
+      providers: [AppService],
+    }).compile();
+
+    appController = app.get<AppController>(AppController);
+  });
+
+  it('should return "Hello World!"', () => {
+    expect(appController.getHello()).toBe('Hello World!');
+  });
+});
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\app.controller.ts
+import { Controller, Get } from '@nestjs/common';
+import { AppService } from './app.service';
+
+@Controller()
+export class AppController {
+  constructor(private readonly appService: AppService) {}
+
+  @Get()
+  getHello(): string {
+    return this.appService.getHello();
+  }
+}
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\app.module.ts
+// src/app.module.ts
+import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { OrdersModule } from './orders/orders.module';
+import { Order } from './orders/entities/order.entity';
+import { OrderOperation } from './orders/entities/order-operation.entity'; // Добавьте импорт
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      useFactory: (configService: ConfigService) => ({
+        type: 'postgres',
+        host: configService.get<string>('DATABASE_HOST'),
+        port: configService.get<number>('DATABASE_PORT'),
+        username: configService.get<string>('DATABASE_USER'),
+        password: configService.get<string>('DATABASE_PASSWORD'),
+        database: configService.get<string>('DATABASE_NAME'),
+        entities: [Order, OrderOperation], // Добавьте обе сущности
+        synchronize: true,
+      }),
+      inject: [ConfigService],
+    }),
+    OrdersModule,
+  ],
+})
+export class AppModule {}
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\app.service.ts
+import { Injectable } from '@nestjs/common';
+
+@Injectable()
+export class AppService {
+  getHello(): string {
+    return 'Hello World!';
+  }
+}
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\main.ts
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
+import helmet from 'helmet';
+import * as compression from 'compression';
+import { ValidationPipe } from '@nestjs/common';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+
+  // ✅ Безопасность
+  app.use(helmet());
+  app.enableCors(); // Разрешаем CORS для фронтенда
+  app.use(compression());
+  
+
+  // ✅ Глобальная валидация DTO
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true }));
+
+  // ✅ Swagger Документация
+  const config = new DocumentBuilder()
+    .setTitle('Factory Orders API')
+    .setDescription('Документация для заказов и загрузки файлов')
+    .setVersion('1.0')
+    .addTag('Orders')
+    .addBearerAuth() // на будущее для JWT токенов
+    .build();
+
+  const document = SwaggerModule.createDocument(app, config);
+  SwaggerModule.setup('api-docs', app, document); // Документация доступна по /api-docs
+
+  // ✅ Запуск
+  await app.listen(3000);
+  console.log(`🚀 Backend запущен: http://localhost:3000`);
+  console.log(`📚 Swagger доступен по адресу: http://localhost:3000/api-docs`);
+}
+bootstrap();
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\typeorm.config.ts
+import * as dotenv from 'dotenv';
+import { DataSource } from 'typeorm';
+dotenv.config();
+
+export const AppDataSource = new DataSource({
+  type: 'postgres',
+  host: process.env.DATABASE_HOST,
+  port: Number(process.env.DATABASE_PORT),
+  username: process.env.DATABASE_USER,
+  password: String(process.env.DATABASE_PASSWORD),
+  database: process.env.DATABASE_NAME,
+  entities: [__dirname + '/**/*.entity{.ts,.js}'],
+  migrations: [__dirname + '/migrations/**/*{.ts,.js}'],
+  synchronize: false,
+});
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\migrations\1679258567890-AddFieldsToOrderOperation.ts
+import { MigrationInterface, QueryRunner } from "typeorm";
+
+export class AddFieldsToOrderOperation1679258567890 implements MigrationInterface {
+    name = 'AddFieldsToOrderOperation1679258567890'
+
+    public async up(queryRunner: QueryRunner): Promise<void> {
+        // Добавление поля assigned_machine в таблицу order_operations
+        await queryRunner.query(`ALTER TABLE "order_operations" ADD "assigned_machine" character varying(255)`);
+        
+        // Добавление поля start_date в таблицу order_operations
+        await queryRunner.query(`ALTER TABLE "order_operations" ADD "start_date" TIMESTAMP`);
+        
+        // Добавление поля end_date в таблицу order_operations
+        await queryRunner.query(`ALTER TABLE "order_operations" ADD "end_date" TIMESTAMP`);
+    }
+
+    public async down(queryRunner: QueryRunner): Promise<void> {
+        // Удаление полей в обратном порядке при откате миграции
+        await queryRunner.query(`ALTER TABLE "order_operations" DROP COLUMN "end_date"`);
+        await queryRunner.query(`ALTER TABLE "order_operations" DROP COLUMN "start_date"`);
+        await queryRunner.query(`ALTER TABLE "order_operations" DROP COLUMN "assigned_machine"`);
+    }
+}
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\orders\orders.controller.ts
+import { Controller, Post, Get, Body, Param, Patch, Delete } from '@nestjs/common';
+import { OrdersService } from './orders.service';
+import { CreateOrderDto } from './dto/create-order.dto';
+import { Order } from './entities/order.entity';
+
+
+@Controller('orders')
+export class OrdersController {
+  constructor(private readonly ordersService: OrdersService) {}
+
+  @Post()
+  create(@Body() createOrderDto: CreateOrderDto) {
+    return this.ordersService.create(createOrderDto);
+  }
+
+  @Get()
+  findAll() {
+    return this.ordersService.findAll();
+  }
+
+  @Get(':id')
+  findOne(@Param('id') id: number) {
+    return this.ordersService.findOne(id);
+  }
+  @Patch(':id')
+  async update(@Param('id') id: number, @Body() updateData: Partial<CreateOrderDto>) {
+    // Создаем объект для обновления заказа без операций
+    const { operations, ...orderData } = updateData;
+    
+    const transformedData: any = {
+      ...orderData,
+      start_date: orderData.start_date ? new Date(orderData.start_date) : undefined,
+      deadline: orderData.deadline ? new Date(orderData.deadline) : undefined,
+      estimated_completion: orderData.estimated_completion ? new Date(orderData.estimated_completion) : undefined,
+    };
+  
+    // Передаем операции отдельно в метод сервиса
+    return this.ordersService.update(id, transformedData, operations);
+  }
+  @Delete(':id')
+  remove(@Param('id') id: number) {
+    return this.ordersService.remove(id);
+  }
+}
+
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\orders\orders.module.ts
+// src/orders/orders.module.ts
+import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { OrdersService } from './orders.service';
+import { OrdersController } from './orders.controller';
+import { Order } from './entities/order.entity';
+import { OrderOperation } from './entities/order-operation.entity'; // Добавьте импорт
+
+@Module({
+  imports: [TypeOrmModule.forFeature([Order, OrderOperation])], // Добавьте обе сущности
+  controllers: [OrdersController],
+  providers: [OrdersService],
+})
+export class OrdersModule {}
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\orders\orders.service.ts
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
+import { Order } from './entities/order.entity';
+import { OrderOperation } from './entities/order-operation.entity';
+import { CreateOrderDto, OperationDto } from './dto/create-order.dto';
+
+@Injectable()
+export class OrdersService {
+  constructor(
+    @InjectRepository(Order)
+    private readonly orderRepository: Repository<Order>,
+
+    @InjectRepository(OrderOperation)
+    private readonly operationRepository: Repository<OrderOperation>,
+  ) {}
+
+  async create(createOrderDto: CreateOrderDto) {
+    const { operations, ...orderData } = createOrderDto;
+    
+    // Важное изменение: Если start_date не указан, используем текущую дату
+    const newOrder = this.orderRepository.create({
+      ...orderData,
+      start_date: orderData.start_date ? new Date(orderData.start_date) : new Date(),
+      deadline: new Date(orderData.deadline),
+    });
+    
+    const savedOrder = await this.orderRepository.save(newOrder);
+
+    if (operations?.length) {
+      const ops = operations.map((op) =>
+        this.operationRepository.create({
+          op_number: op.op_number,
+          op_time: op.op_time,
+          op_axes: op.op_axes,
+          assigned_machine: op.assigned_machine,
+          start_date: op.start_date ? new Date(op.start_date) : undefined,
+          end_date: op.end_date ? new Date(op.end_date) : undefined,
+          order: savedOrder,
+        }),
+      );
+      await this.operationRepository.save(ops);
+    }
+
+    return this.findOne(savedOrder.id);
+  }
+
+  async findAll() {
+    return this.orderRepository.find({ relations: ['operations'] });
+  }
+
+  async findOne(id: number) {
+    const order = await this.orderRepository.findOne({
+      where: { id },
+      relations: ['operations'],
+    });
+    if (!order) throw new NotFoundException('Order not found');
+    return order;
+  }
+
+  async update(id: number, updateData: Partial<Order>, operations?: OperationDto[]) {
+    const order = await this.orderRepository.findOne({ where: { id } });
+    if (!order) throw new NotFoundException('Order not found');
+
+    // Фильтруем поля, которые можно обновить
+    const allowedFields = [
+      'machine_name', 'blueprint_number', 'start_date', 'deadline',
+      'quantity', 'pdf_path', 'drawing_url', 'preview_url',
+      'estimated_completion', 'estimated_workdays', 'will_meet_deadline',
+      'time_margin', 'completed_quantity', 'remaining_quantity',
+      'priority', 'material_type', 'status'
+    ];
+    
+    const sanitizedUpdate: any = {};
+    for (const key of Object.keys(updateData)) {
+      if (allowedFields.includes(key)) {
+        sanitizedUpdate[key] = updateData[key];
+      } else {
+        console.log(`Поле '${key}' не допустимо для обновления и будет проигнорировано`);
+      }
+    }
+    
+    // Преобразуем даты
+    if (sanitizedUpdate.start_date) {
+      sanitizedUpdate.start_date = new Date(sanitizedUpdate.start_date);
+    }
+    if (sanitizedUpdate.deadline) {
+      sanitizedUpdate.deadline = new Date(sanitizedUpdate.deadline);
+    }
+    if (sanitizedUpdate.estimated_completion) {
+      sanitizedUpdate.estimated_completion = new Date(sanitizedUpdate.estimated_completion);
+    }
+
+    // Обновляем заказ
+    await this.orderRepository.update(id, sanitizedUpdate);
+
+    // Обновляем операции, если они предоставлены
+    if (operations && operations.length >= 0) {
+      // Удаляем существующие операции
+      await this.operationRepository.delete({ order: { id } });
+      
+      // Создаем новые операции
+      if (operations.length > 0) {
+        const operationsToSave = operations.map(op => 
+          this.operationRepository.create({
+            op_number: op.op_number,
+            op_time: op.op_time,
+            op_axes: op.op_axes,
+            assigned_machine: op.assigned_machine,
+            start_date: op.start_date ? new Date(op.start_date) : undefined,
+            end_date: op.end_date ? new Date(op.end_date) : undefined,
+            order: { id }
+          })
+        );
+        await this.operationRepository.save(operationsToSave);
+      }
+    }
+
+    // Возвращаем обновленный заказ со всеми связями
+    return this.findOne(id);
+  }
+  
+  async remove(id: number) {
+    await this.operationRepository.delete({ order: { id } });
+    await this.orderRepository.delete(id);
+    return { message: 'Order and operations deleted' };
+  }
+}
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\orders\dto\create-order.dto.ts
+import { IsString, IsInt, IsOptional, IsBoolean, IsDateString, Min, MaxLength, ValidateNested, ArrayMaxSize } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class OperationDto {
+  @IsInt()
+  op_number!: number;
+
+  @IsInt()
+  @Min(1)
+  op_time!: number;
+
+  @IsString()
+  @MaxLength(10)
+  op_axes!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  assigned_machine?: string;
+
+  @IsOptional()
+  @IsDateString()
+  start_date?: string;
+
+  @IsOptional()
+  @IsDateString()
+  end_date?: string;
+}
+
+export class CreateOrderDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  machine_name?: string;
+
+  @IsString()
+  @MaxLength(100)
+  blueprint_number!: string;
+
+  @IsOptional()
+  @IsDateString()
+  start_date?: string;
+
+  @IsDateString()
+  deadline!: string;
+
+  @IsInt()
+  @Min(1)
+  quantity!: number;
+
+  @IsOptional()
+  @IsString()
+  pdf_path?: string;
+
+  @IsString()
+  drawing_url!: string;
+
+  @IsOptional()
+  @IsString()
+  preview_url?: string;
+
+  @IsOptional()
+  @IsDateString()
+  estimated_completion?: string;
+
+  @IsOptional()
+  @IsInt()
+  estimated_workdays?: number;
+
+  @IsBoolean()
+  will_meet_deadline!: boolean;
+
+  @IsInt()
+  time_margin!: number;
+
+  @IsInt()
+  completed_quantity!: number;
+
+  @IsInt()
+  remaining_quantity!: number;
+
+  @IsInt()
+  priority!: number;
+
+  @IsOptional()
+  @IsString()
+  material_type?: string;
+
+  @IsString()
+  status!: string;
+
+  @IsOptional()
+  @ValidateNested({ each: true })
+  @Type(() => OperationDto)
+  @ArrayMaxSize(6)
+  operations?: OperationDto[];
+}
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\orders\dto\update-order.dto.ts
+import { PartialType } from '@nestjs/mapped-types';
+import { IsOptional, IsInt, IsString } from 'class-validator';
+import { CreateOrderDto } from './create-order.dto';
+
+export class UpdateOrderDto extends PartialType(CreateOrderDto) {
+  @IsOptional()
+  @IsInt()
+  completedQuantity?: number;
+
+  @IsOptional()
+  @IsString()
+  status?: string;
+}
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\orders\entities\order-operation.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
+import { Order } from './order.entity';
+
+@Entity('order_operations')
+export class OrderOperation {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column()
+  op_number!: number;
+
+  @Column()
+  op_time!: number;
+
+  @Column({ length: 10 })
+  op_axes!: string;
+
+  @Column({ length: 255, nullable: true })
+  assigned_machine?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  start_date?: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  end_date?: Date;
+
+  @ManyToOne(() => Order, (order) => order.operations, { onDelete: 'CASCADE' })
+  order!: Order;
+}
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\orders\entities\order.entity.ts
+import { Entity, Column, PrimaryGeneratedColumn, OneToMany } from 'typeorm';
+import { OrderOperation } from './order-operation.entity';
+
+@Entity('orders')
+export class Order {
+  @PrimaryGeneratedColumn()
+  id!: number;
+
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  machine_name?: string;
+
+  @Column({ type: 'varchar', length: 100 })
+  blueprint_number!: string;
+
+  // Важное изменение: start_date обязательное, устанавливаем значение по умолчанию
+  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  start_date!: Date;
+
+  @Column({ type: 'timestamp' })
+  deadline!: Date;
+
+  @Column({ type: 'int' })
+  quantity!: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  pdf_path?: string;
+
+  // Разрешаем NULL для drawing_url
+  @Column({ type: 'varchar', nullable: true })
+  drawing_url?: string;
+
+  @Column({ type: 'varchar', nullable: true })
+  preview_url?: string;
+
+  @Column({ type: 'timestamp', nullable: true })
+  estimated_completion?: Date;
+
+  @Column({ type: 'int', nullable: true })
+  estimated_workdays?: number;
+
+  @Column({ type: 'boolean', default: true })
+  will_meet_deadline!: boolean;
+
+  @Column({ type: 'int', default: 0 })
+  time_margin!: number;
+
+  @Column({ type: 'int', default: 0 })
+  completed_quantity!: number;
+
+  @Column({ type: 'int' })
+  remaining_quantity!: number;
+
+  @Column({ type: 'int', default: 1 })
+  priority!: number;
+
+  @Column({ type: 'varchar', nullable: true })
+  material_type?: string;
+
+  @Column({ type: 'varchar', default: 'новый' })
+  status!: string;
+
+  // Связь для operations
+  @OneToMany(() => OrderOperation, (operation) => operation.order, {
+    cascade: true,
+    eager: true,
+  })
+  operations!: OrderOperation[];
+}
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\backend\src\orders\interfaces\order.interface.ts
+export interface OrderResponse {
+    id: number;
+    machineName: string;
+    blueprintNumber: string;
+    startDate: string;
+    deadline: string;
+    quantity: number;
+    drawingUrl: string;
+    opNumber?: number;
+    opAxes?: string;
+    opTime?: number;
+    status: string;
+  }
+
+================================================================================
+
