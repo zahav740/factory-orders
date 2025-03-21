@@ -659,7 +659,7 @@ export const updateMachineReleaseDate = async (name: string, releaseDate: string
 
 ### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\api\ScheduleService.ts
 // src/services/ScheduleService.ts
-import { Order, Operation } from '../api/ordersApi';
+import { Order, Operation } from './ordersApi';
 import { MachineSchedule, OrderAssignment, ScheduleState, saveScheduleState, loadScheduleState } from '../models/ScheduleModels';
 
 // Список доступных станков
@@ -940,6 +940,40 @@ const CalculationPage: React.FC = () => {
   const MINUTES_PER_DAY = 960; // 16 часов в день
   const SETUP_TIME = 480; // 8 часов на наладку
   
+  // Проверка, является ли день выходным (пятница или суббота)
+  const isWeekend = (date: Date): boolean => {
+    const day = date.getDay();
+    return day === 5 || day === 6; // 5 - пятница, 6 - суббота
+  };
+
+  // Получение следующего рабочего дня
+  const getNextWorkingDay = (date: Date): Date => {
+    let nextDay = new Date(date);
+    
+    do {
+      nextDay = addDays(nextDay, 1);
+    } while (isWeekend(nextDay));
+    
+    return nextDay;
+  };
+
+  // Добавление рабочих дней к дате
+  const addWorkingDays = (date: Date, days: number): Date => {
+    let result = new Date(date);
+    let remainingDays = days;
+    
+    while (remainingDays > 0) {
+      result = addDays(result, 1);
+      
+      // Пропускаем выходные дни
+      if (!isWeekend(result)) {
+        remainingDays--;
+      }
+    }
+    
+    return result;
+  };
+
   // Загрузка данных и проверка сохраненного расчета
   useEffect(() => {
     const loadData = async () => {
@@ -1028,52 +1062,55 @@ const CalculationPage: React.FC = () => {
     }
   };
 
-  // Проверка, является ли день выходным (пятница или суббота)
-  const isWeekend = (date: Date): boolean => {
-    const day = date.getDay();
-    return day === 5 || day === 6; // 5 - пятница, 6 - суббота
-  };
-
-  // Добавление рабочих дней к дате с учетом выходных (пятница, суббота)
-  const addWorkingDays = (date: Date, days: number): Date => {
-    let result = new Date(date);
-    let remainingDays = days;
-    
-    while (remainingDays > 0) {
-      result = addDays(result, 1);
-      
-      // Пропускаем выходные дни
-      if (!isWeekend(result)) {
-        remainingDays--;
-      }
-    }
-    
-    return result;
-  };
-
-  // Получение следующего рабочего дня
-  const getNextWorkingDay = (date: Date): Date => {
-    let nextDay = new Date(date);
-    
-    do {
-      nextDay = addDays(nextDay, 1);
-    } while (isWeekend(nextDay));
-    
-    return nextDay;
-  };
-
   // Сохранение расчета в localStorage
-  const saveCalculationState = (calculatedOrders: OrderWithCalculation[], machines: Machine[]) => {
+  const saveCalculationState = (calculatedOrders: OrderWithCalculation[], machines: Machine[], isUpdate: boolean = false) => {
     try {
-      const calculationState: CalculationState = {
-        calculatedOrders,
-        machines,
-        lastCalculationDate: new Date().toISOString(),
-        isActive: true
-      };
+      // Если это обновление существующего расчета, загружаем предыдущее состояние
+      let calculationState: CalculationState;
+      
+      if (isUpdate) {
+        const savedCalculation = localStorage.getItem('factoryCalculationState');
+        if (savedCalculation) {
+          calculationState = JSON.parse(savedCalculation);
+          
+          // Обновляем только дату расчета и машины
+          calculationState.lastCalculationDate = new Date().toISOString();
+          calculationState.machines = machines;
+          
+          // Обновляем только заказы, которые были пересчитаны
+          const existingOrderMap = new Map(
+            calculationState.calculatedOrders.map(order => [order.id, order])
+          );
+          
+          // Для каждого заказа из текущего расчета
+          for (const order of calculatedOrders) {
+            // Если заказ уже был в расчете, обновляем его
+            existingOrderMap.set(order.id, order);
+          }
+          
+          // Преобразуем Map обратно в массив
+          calculationState.calculatedOrders = Array.from(existingOrderMap.values());
+        } else {
+          // Если нет сохраненного состояния, создаем новое
+          calculationState = {
+            calculatedOrders,
+            machines,
+            lastCalculationDate: new Date().toISOString(),
+            isActive: true
+          };
+        }
+      } else {
+        // Создаем новое состояние расчета
+        calculationState = {
+          calculatedOrders,
+          machines,
+          lastCalculationDate: new Date().toISOString(),
+          isActive: true
+        };
+      }
       
       localStorage.setItem('factoryCalculationState', JSON.stringify(calculationState));
-      console.log('Состояние расчета сохранено в localStorage');
+      console.log(`Состояние расчета ${isUpdate ? 'обновлено' : 'сохранено'} в localStorage`);
     } catch (error) {
       console.error('Ошибка при сохранении состояния расчета:', error);
     }
@@ -1122,6 +1159,281 @@ const CalculationPage: React.FC = () => {
       setError('Ошибка при сбросе результатов. Попробуйте еще раз.');
     } finally {
       setIsResetting(false);
+    }
+  };
+
+  // Расчет распределения заказов по станкам
+  const calculateMachineAssignment = async () => {
+    setIsCalculating(true);
+    setError(null);
+    
+    try {
+      // Получаем текущий статус расчета, чтобы определить, первичный это расчет или обновление
+      const isFirstCalculation = !isResultVisible;
+      
+      const today = new Date();
+      console.log('Текущая дата:', today.toISOString());
+      console.log('Первичный расчет:', isFirstCalculation);
+      
+      // Копируем массивы для изменения
+      const workingOrders = [...orders];
+      
+      // Преобразуем строковые даты в объекты Date для расчетов
+      const workingMachines = machines.map(machine => ({
+        ...machine,
+        releaseDate: new Date(machine.releaseDate)
+      }));
+      
+      // Сортируем заказы по приоритету (по убыванию) и дедлайну (по возрастанию)
+      workingOrders.sort((a, b) => {
+        // Сначала проверяем, просрочен ли дедлайн или близок к просрочке (менее 30 дней)
+        const aOverdue = a.deadline < today;
+        const bOverdue = b.deadline < today;
+        
+        // Просроченные дедлайны в начало списка
+        if (aOverdue !== bOverdue) {
+          return aOverdue ? -1 : 1;
+        }
+        
+        // Затем близкие к просрочке (менее 30 дней)
+        const aNearDeadline = differenceInDays(a.deadline, today) < 30;
+        const bNearDeadline = differenceInDays(b.deadline, today) < 30;
+        
+        if (aNearDeadline !== bNearDeadline) {
+          return aNearDeadline ? -1 : 1;
+        }
+        
+        // Если оба заказа в похожей ситуации с дедлайном, сортируем по приоритету
+        if (a.priority !== b.priority) {
+          return b.priority - a.priority;
+        }
+        
+        // Наконец, сортируем по дедлайну (самые ранние сначала)
+        return a.deadline.getTime() - b.deadline.getTime();
+      });
+      
+      console.log('Отсортированные заказы для распределения:', workingOrders);
+
+      // Создаем массив для хранения заказов, которые были изменены и требуют обновления
+      const ordersToUpdate: OrderWithCalculation[] = [];
+      
+      // Обрабатываем каждый заказ
+      for (const order of workingOrders) {
+        console.log(`\nОбработка заказа ${order.id} (${order.blueprintNumber})`);
+        console.log(`Дедлайн: ${order.deadline.toISOString()}, Приоритет: ${order.priority}`);
+        
+        // Проверяем, нужно ли обрабатывать этот заказ:
+        // 1. Если это первый расчет - обрабатываем все заказы
+        // 2. Если не первый расчет - обрабатываем только заказы без операций или с изменениями
+        
+        const shouldProcessOrder = isFirstCalculation || 
+                                !order.operations || 
+                                order.operations.length === 0 ||
+                                order.operations.some(op => !op.assignedMachine || !op.startDate || !op.endDate);
+        
+        if (!shouldProcessOrder) {
+          console.log(`Заказ ${order.id} уже имеет назначенные операции, пропускаем...`);
+          continue;
+        }
+        
+        let lastOperationEndDate: Date | null = null;
+        
+        // Проверяем, есть ли операции в заказе
+        if (!order.operations || order.operations.length === 0) {
+          console.warn(`Заказ ${order.id} не имеет операций.`);
+          continue;
+        }
+        
+        // Сортируем операции по номеру
+        const sortedOperations = [...order.operations].sort((a, b) => a.opNumber - b.opNumber);
+        
+        // Флаг, был ли заказ изменен
+        let orderChanged = false;
+        
+        // Обрабатываем каждую операцию заказа в порядке номера операции
+        for (let i = 0; i < sortedOperations.length; i++) {
+          const operation = sortedOperations[i];
+          
+          // Проверяем, нужно ли обрабатывать эту операцию
+          const shouldProcessOperation = isFirstCalculation || 
+                                        !operation.assignedMachine || 
+                                        !operation.startDate || 
+                                        !operation.endDate;
+          
+          if (!shouldProcessOperation) {
+            console.log(`Операция #${operation.opNumber} заказа ${order.id} уже назначена, пропускаем...`);
+            
+            // Сохраняем дату окончания для следующей операции
+            if (operation.endDate) {
+              lastOperationEndDate = new Date(operation.endDate);
+            }
+            
+            continue;
+          }
+          
+          // Расчет времени выполнения операции
+          const operationTime = operation.opTime * order.quantity; // e = op * c
+          const totalTime = operationTime + SETUP_TIME; // total_time = e + f
+          const requiredDays = Math.ceil(totalTime / MINUTES_PER_DAY); // Округляем до целых дней
+          
+          console.log(`Операция #${operation.opNumber}: требуется ${requiredDays} дней`);
+          
+          // Определяем тип операции и фильтруем подходящие станки
+          let suitableMachines;
+          if (operation.opAxes === '4х') {
+            // Для 4х осевых операций только специальные станки
+            suitableMachines = workingMachines.filter(machine => 
+              machine.types.includes(MachineType.MILLING_4AXIS)
+            );
+            console.log(`Операция ${operation.opNumber} требует 4х-осевой станок`);
+          } else if (operation.opAxes === '3х') {
+            // Для 3х осевых операций подходят все фрезерные станки
+            suitableMachines = workingMachines.filter(machine => 
+              machine.types.includes(MachineType.MILLING_3AXIS) || 
+              machine.types.includes(MachineType.MILLING_4AXIS)
+            );
+            console.log(`Операция ${operation.opNumber} может быть выполнена на 3х-осевом станке`);
+          } else {
+            // Для токарных операций
+            suitableMachines = workingMachines.filter(machine => 
+              machine.types.includes(MachineType.TURNING)
+            );
+            console.log(`Операция ${operation.opNumber} требует токарный станок`);
+          }
+          
+          // Проверяем, нашли ли подходящие станки
+          if (suitableMachines.length === 0) {
+            console.error(`Не найден подходящий станок для операции ${operation.opNumber} заказа ${order.id}`);
+            continue;
+          }
+          
+          // Сортируем по дате освобождения (выбираем станок, который освободится раньше всех)
+          suitableMachines.sort((a, b) => 
+            a.releaseDate.getTime() - b.releaseDate.getTime()
+          );
+          
+          console.log(`Подходящие станки (отсортированы по дате освобождения):`, 
+                    suitableMachines.map(m => `${m.name} (${m.releaseDate.toISOString()})`));
+          
+          // Выбираем станок, который освободится раньше всех
+          const selectedMachine = suitableMachines[0];
+          console.log(`Выбран станок ${selectedMachine.name}, доступен с ${selectedMachine.releaseDate.toISOString()}`);
+          
+          // Определяем дату начала операции
+          let startDate: Date;
+          
+          if (i === 0) {
+            // Для первой операции - дата освобождения станка
+            startDate = new Date(selectedMachine.releaseDate);
+            console.log(`Первая операция: начало с даты ${startDate.toISOString()}`);
+          } else if (lastOperationEndDate) {
+            // Для последующих операций - следующий рабочий день после даты окончания предыдущей операции
+            // или дата освобождения станка, в зависимости от того, что позже
+            const nextWorkingDayAfterLastOp = getNextWorkingDay(lastOperationEndDate);
+            
+            // Берем максимальную из двух дат: следующий рабочий день после предыдущей операции или день освобождения станка
+            startDate = new Date(Math.max(
+              nextWorkingDayAfterLastOp.getTime(),
+              selectedMachine.releaseDate.getTime()
+            ));
+            
+            console.log(`Последующая операция: последняя операция закончилась ${lastOperationEndDate.toISOString()}`);
+            console.log(`Станок доступен с ${selectedMachine.releaseDate.toISOString()}`);
+            console.log(`Выбрана дата начала: ${startDate.toISOString()}`);
+          } else {
+            // Запасной вариант, хотя до этого не должно дойти
+            startDate = new Date(selectedMachine.releaseDate);
+            console.log(`Запасной вариант даты: ${startDate.toISOString()}`);
+          }
+          
+          // Если дата начала - выходной, переносим на следующий рабочий день
+          if (isWeekend(startDate)) {
+            const oldDate = new Date(startDate);
+            startDate = getNextWorkingDay(new Date(startDate.getTime() - 24 * 60 * 60 * 1000)); // Отступаем на день назад и ищем следующий рабочий
+            console.log(`Дата начала ${oldDate.toISOString()} - выходной, перенесена на ${startDate.toISOString()}`);
+          }
+          
+          // Рассчитываем дату окончания с учетом рабочих дней
+          const endDate = addWorkingDays(startDate, requiredDays);
+          console.log(`Расчетная дата окончания: ${endDate.toISOString()}`);
+          
+          // Сохраняем результат для операции
+          operation.assignedMachine = selectedMachine.name;
+          operation.startDate = new Date(startDate);
+          operation.endDate = new Date(endDate);
+          
+          // Отмечаем, что заказ был изменен
+          orderChanged = true;
+          
+          // Обновляем дату освобождения станка
+          const machineIndex = workingMachines.findIndex(m => m.name === selectedMachine.name);
+          workingMachines[machineIndex].releaseDate = new Date(endDate);
+          console.log(`Станок ${selectedMachine.name} теперь свободен с ${endDate.toISOString()}`);
+          
+          // Обновляем моковые данные (в реальном приложении это было бы через API)
+          try {
+            await updateMachineReleaseDate(
+              selectedMachine.name, 
+              endDate.toISOString()
+            );
+          } catch (error) {
+            console.error('Ошибка при обновлении даты освобождения станка:', error);
+          }
+          
+          // Сохраняем дату окончания для следующей операции
+          lastOperationEndDate = new Date(endDate);
+        }
+        
+        // Если заказ был изменен, обновляем информацию о нем и добавляем в список для обновления
+        if (orderChanged && lastOperationEndDate) {
+          // Обновляем расчетную дату окончания заказа
+          order.calculatedEndDate = lastOperationEndDate;
+          
+          // Проверяем, успеваем ли к дедлайну
+          order.willMeetDeadline = lastOperationEndDate <= order.deadline;
+          
+          // Добавляем заказ в список для обновления
+          ordersToUpdate.push(order);
+          
+          // Если не успеваем к сроку, логируем это
+          if (!order.willMeetDeadline) {
+            console.log(`Заказ ${order.id} не успевает к сроку. Новый срок: ${format(lastOperationEndDate, 'dd.MM.yyyy')}`);
+          }
+        }
+      }
+      
+      console.log(`Заказов для обновления: ${ordersToUpdate.length}`);
+      
+      // Обновление состояния внутри компонента для отображения
+      setCalculationResult([...workingOrders]);
+      
+      // Сохраняем обновленные даты освобождения станков
+      const updatedMachines = workingMachines.map(machine => ({
+        ...machine,
+        releaseDate: machine.releaseDate.toISOString()
+      }));
+      setMachines(updatedMachines);
+      
+      setIsResultVisible(true);
+      
+      // Сохраняем результаты расчета в localStorage
+      saveCalculationState(workingOrders, updatedMachines, !isFirstCalculation);
+      
+      // Автоматически сохраняем результаты расчета в БД
+      if (ordersToUpdate.length > 0) {
+        const saveResult = await autoSaveCalculationResults(ordersToUpdate);
+        if (saveResult) {
+          console.log('Результаты расчета успешно сохранены в БД!');
+        }
+      } else {
+        console.log('Нет изменений для сохранения в БД');
+      }
+      
+    } catch (error: any) {
+      console.error('Ошибка при расчете распределения заказов:', error);
+      setError(`Ошибка при расчете: ${error.message}`);
+    } finally {
+      setIsCalculating(false);
     }
   };
 
@@ -1215,177 +1527,6 @@ const CalculationPage: React.FC = () => {
     }
   };
 
-  // Расчет распределения заказов по станкам
-  const calculateMachineAssignment = async () => {
-    setIsCalculating(true);
-    setError(null);
-    
-    try {
-      // Копируем массивы для изменения
-      const workingOrders = [...orders];
-      
-      // Преобразуем строковые даты в объекты Date для расчетов
-      const workingMachines = machines.map(machine => ({
-        ...machine,
-        releaseDate: new Date(machine.releaseDate)
-      }));
-      
-      // Фильтруем только заказы без назначенного станка
-      const unassignedOrders = workingOrders.filter(order => !order.machineName);
-      
-      // Сортируем заказы по приоритету (по убыванию) и дедлайну (по возрастанию)
-      unassignedOrders.sort((a, b) => {
-        if (a.priority !== b.priority) {
-          return b.priority - a.priority; // По убыванию приоритета
-        }
-        return a.deadline.getTime() - b.deadline.getTime(); // По возрастанию дедлайна
-      });
-
-      // Проверяем, есть ли заказы для распределения
-      if (unassignedOrders.length === 0) {
-        setError('Нет заказов без назначенного станка для распределения.');
-        setIsCalculating(false);
-        return;
-      }
-      
-      // Обрабатываем каждый заказ
-      for (const order of unassignedOrders) {
-        let lastOperationEndDate: Date | null = null;
-        
-        // Проверяем, есть ли операции в заказе
-        if (!order.operations || order.operations.length === 0) {
-          console.warn(`Заказ ${order.id} не имеет операций.`);
-          continue;
-        }
-        
-        // Обрабатываем каждую операцию заказа
-        for (let i = 0; i < order.operations.length; i++) {
-          const operation = order.operations[i];
-          
-          // Расчет времени выполнения операции
-          const operationTime = operation.opTime * order.quantity; // e = op * c
-          const totalTime = operationTime + SETUP_TIME; // total_time = e + f
-          const requiredDays = Math.ceil(totalTime / MINUTES_PER_DAY); // Округляем до целых дней
-          
-          // Определяем тип операции и фильтруем подходящие станки
-          let suitableMachines;
-          if (operation.opAxes === '4х') {
-            // Для 4х осевых операций только специальные станки
-            suitableMachines = workingMachines.filter(machine => 
-              machine.types.includes(MachineType.MILLING_4AXIS)
-            );
-          } else if (operation.opAxes === '3х') {
-            // Для 3х осевых операций подходят все фрезерные станки
-            suitableMachines = workingMachines.filter(machine => 
-              machine.types.includes(MachineType.MILLING_3AXIS) || 
-              machine.types.includes(MachineType.MILLING_4AXIS)
-            );
-          } else {
-            // Для токарных операций
-            suitableMachines = workingMachines.filter(machine => 
-              machine.types.includes(MachineType.TURNING)
-            );
-          }
-          
-          // Проверяем, нашли ли подходящие станки
-          if (suitableMachines.length === 0) {
-            console.error(`Не найден подходящий станок для операции ${operation.opNumber} заказа ${order.id}`);
-            continue;
-          }
-          
-          // Сортируем по дате освобождения (выбираем станок, который освободится раньше всех)
-          suitableMachines.sort((a, b) => 
-            a.releaseDate.getTime() - b.releaseDate.getTime()
-          );
-          
-          // Выбираем станок, который освободится раньше всех
-          const selectedMachine = suitableMachines[0];
-          
-          // Определяем дату начала операции
-          let startDate: Date;
-          
-          if (i === 0) {
-            // Для первой операции - дата освобождения станка
-            startDate = new Date(selectedMachine.releaseDate);
-          } else {
-            // Для последующих операций - следующий рабочий день после даты окончания предыдущей операции
-            startDate = lastOperationEndDate!;
-          }
-          
-          // Если дата начала - выходной, переносим на следующий рабочий день
-          if (isWeekend(startDate)) {
-            startDate = getNextWorkingDay(startDate);
-          }
-          
-          // Рассчитываем дату окончания с учетом рабочих дней
-          const endDate = addWorkingDays(startDate, requiredDays);
-          
-          // Сохраняем результат для операции
-          operation.assignedMachine = selectedMachine.name;
-          operation.startDate = new Date(startDate);
-          operation.endDate = new Date(endDate);
-          
-          // Обновляем дату освобождения станка
-          const machineIndex = workingMachines.findIndex(m => m.name === selectedMachine.name);
-          workingMachines[machineIndex].releaseDate = new Date(endDate);
-          
-          // Сохраняем дату окончания для следующей операции
-          lastOperationEndDate = new Date(endDate);
-          
-          // Обновляем моковые данные (в реальном приложении это было бы через API)
-          try {
-            await updateMachineReleaseDate(
-              selectedMachine.name, 
-              endDate.toISOString()
-            );
-          } catch (error) {
-            console.error('Ошибка при обновлении даты освобождения станка:', error);
-          }
-        }
-        
-        // Обновляем информацию о заказе
-        if (lastOperationEndDate) {
-          order.calculatedEndDate = lastOperationEndDate;
-          
-          // Проверяем, успеваем ли к дедлайну
-          order.willMeetDeadline = lastOperationEndDate <= order.deadline;
-          
-          // Если не успеваем к сроку, логируем это
-          if (!order.willMeetDeadline) {
-            console.log(`Заказ ${order.id} не успевает к сроку. Новый срок: ${format(lastOperationEndDate, 'dd.MM.yyyy')}`);
-          }
-        }
-      }
-      
-      // Обновление состояния внутри компонента для отображения
-      setCalculationResult([...workingOrders]);
-      
-      // Сохраняем обновленные даты освобождения станков
-      const updatedMachines = workingMachines.map(machine => ({
-        ...machine,
-        releaseDate: machine.releaseDate.toISOString()
-      }));
-      setMachines(updatedMachines);
-      
-      setIsResultVisible(true);
-      
-      // Сохраняем результаты расчета в localStorage
-      saveCalculationState(workingOrders, updatedMachines);
-      
-      // Автоматически сохраняем результаты расчета в БД
-      const saveResult = await autoSaveCalculationResults(workingOrders);
-      if (saveResult) {
-        console.log('Результаты расчета успешно сохранены в БД!');
-      }
-      
-    } catch (error: any) {
-      console.error('Ошибка при расчете распределения заказов:', error);
-      setError(`Ошибка при расчете: ${error.message}`);
-    } finally {
-      setIsCalculating(false);
-    }
-  };
-
   // Форматирование даты для отображения
   const formatDate = (date: Date | undefined): string => {
     if (!date) return 'Не задано';
@@ -1408,21 +1549,31 @@ const CalculationPage: React.FC = () => {
         <h1 className="text-4xl font-bold">Расчет загрузки станков</h1>
         <div className="flex gap-4">
           <button 
-            className="bg-indigo-600 hover:bg-indigo-500 py-2 px-6 rounded-xl"
+            className="bg-indigo-600 hover:bg-indigo-500 py-2 px-6 rounded-xl relative group"
             onClick={() => calculateMachineAssignment()}
             disabled={isCalculating}
           >
             {isCalculating ? 'Расчет...' : 'Рассчитать'}
+            
+            <div className="absolute hidden group-hover:block bg-gray-900 text-white text-xs p-2 rounded w-64 bottom-full left-1/2 transform -translate-x-1/2 mb-2 shadow-lg z-10">
+              {!isResultVisible 
+                ? 'Первичный расчет: распределяет все заказы по станкам.' 
+                : 'Повторный расчет: обрабатывает только новые и измененные заказы, не трогает существующие.'}
+            </div>
           </button>
           
           {isResultVisible && (
             <>
               <button 
-                className="bg-red-600 hover:bg-red-500 py-2 px-6 rounded-xl"
+                className="bg-red-600 hover:bg-red-500 py-2 px-6 rounded-xl relative group"
                 onClick={resetCalculation}
                 disabled={isResetting}
               >
-                {isResetting ? 'Сброс...' : 'Сбросить'}
+                {isResetting ? 'Сброс...' : 'Сбросить расчет'}
+                
+                <div className="absolute hidden group-hover:block bg-gray-900 text-white text-xs p-2 rounded w-64 bottom-full left-1/2 transform -translate-x-1/2 mb-2 shadow-lg z-10">
+                  Полный сброс всех расчетов. Используйте только если нужно начать заново.
+                </div>
               </button>
               
               <button 
@@ -1588,7 +1739,9 @@ const CalculationPage: React.FC = () => {
                               </tr>
                             </thead>
                             <tbody>
-                              {order.operations.map((op, index) => (
+                              {order.operations
+                                .sort((a, b) => a.opNumber - b.opNumber) // Сортируем операции по номеру
+                                .map((op, index) => (
                                 <tr key={index} className="border-b border-gray-700">
                                   <td className="p-2">{op.opNumber}</td>
                                   <td className="p-2">{op.opAxes}</td>
@@ -1662,6 +1815,244 @@ const HomePage: React.FC = () => {
 
 export default HomePage;
 
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\MachineOperationsCalendar.tsx
+import React, { useState, useEffect } from 'react';
+import { format, addDays, eachDayOfInterval, isWithinInterval } from 'date-fns';
+import { ru } from 'date-fns/locale';
+
+// Типы данных для календаря операций
+interface OrderOperation {
+  orderId: number;
+  blueprintNumber: string;
+  quantity: number;
+  opNumber: number;
+  opTime: number;
+  startDate: Date;
+  endDate: Date;
+  assignedMachine: string;
+}
+
+interface MachineScheduleDay {
+  date: Date;
+  isWeekend: boolean;
+  operations: OrderOperation[];
+}
+
+interface MachineSchedule {
+  machineName: string;
+  days: MachineScheduleDay[];
+}
+
+interface MachineOperationsCalendarProps {
+  operations: OrderOperation[];
+  startDate: Date;
+  endDate: Date;
+}
+
+const MachineOperationsCalendar: React.FC<MachineOperationsCalendarProps> = ({
+  operations,
+  startDate,
+  endDate
+}) => {
+  const [machineSchedules, setMachineSchedules] = useState<MachineSchedule[]>([]);
+  const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
+  const [machines, setMachines] = useState<string[]>([]);
+
+  // Проверка, является ли день выходным (пятница или суббота)
+  const isWeekend = (date: Date): boolean => {
+    const day = date.getDay();
+    return day === 5 || day === 6; // 5 - пятница, 6 - суббота
+  };
+
+  useEffect(() => {
+    // Получение уникального списка машин из операций
+    const uniqueMachines = Array.from(new Set(operations.map(op => op.assignedMachine))).sort();
+    setMachines(uniqueMachines);
+    
+    if (uniqueMachines.length > 0 && !selectedMachine) {
+      setSelectedMachine(uniqueMachines[0]);
+    }
+    
+    // Группируем операции по станкам
+    const schedules: MachineSchedule[] = uniqueMachines.map(machineName => {
+      // Получаем все дни в выбранном диапазоне
+      const days = eachDayOfInterval({ start: startDate, end: endDate });
+      
+      // Фильтруем операции для текущего станка
+      const machineOperations = operations.filter(op => op.assignedMachine === machineName);
+      
+      // Создаем объект дня для каждого дня
+      const scheduleDays: MachineScheduleDay[] = days.map(day => {
+        // Определяем, является ли день выходным
+        const dayIsWeekend = isWeekend(day);
+        
+        // Фильтруем операции, которые выполняются в этот день
+        // Операция должна быть в процессе выполнения в этот день (между startDate и endDate включительно)
+        const dayOperations = machineOperations.filter(op => {
+          const opStartDate = new Date(op.startDate);
+          const opEndDate = new Date(op.endDate);
+          
+          // Проверяем, находится ли текущий день в диапазоне выполнения операции
+          return isWithinInterval(day, { 
+            start: opStartDate, 
+            end: opEndDate 
+          });
+        });
+        
+        return {
+          date: day,
+          isWeekend: dayIsWeekend,
+          operations: dayOperations
+        };
+      });
+      
+      return {
+        machineName,
+        days: scheduleDays
+      };
+    });
+    
+    setMachineSchedules(schedules);
+    
+  }, [operations, startDate, endDate, selectedMachine]);
+
+  // Отображение дневных операций для выбранного станка
+  const renderMachineCalendar = () => {
+    if (!selectedMachine) return null;
+    
+    const machineSchedule = machineSchedules.find(s => s.machineName === selectedMachine);
+    if (!machineSchedule) return null;
+    
+    // Группировка дней по месяцам для календарного представления
+    const months: { [key: string]: MachineScheduleDay[] } = {};
+    
+    machineSchedule.days.forEach(day => {
+      const monthKey = format(day.date, 'yyyy-MM');
+      if (!months[monthKey]) {
+        months[monthKey] = [];
+      }
+      months[monthKey].push(day);
+    });
+    
+    return (
+      <div>
+        {Object.entries(months).map(([monthKey, monthDays]) => {
+          const monthName = format(monthDays[0].date, 'LLLL yyyy', { locale: ru });
+          
+          return (
+            <div key={monthKey} className="mb-8">
+              <h3 className="text-xl font-semibold capitalize mb-4">{monthName}</h3>
+              
+              {/* Календарь месяца */}
+              <div className="bg-gray-800 rounded-xl overflow-hidden">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="p-2 border border-gray-700">Дата</th>
+                      <th className="p-2 border border-gray-700">День недели</th>
+                      <th className="p-2 border border-gray-700 w-3/4">Операции</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthDays.map((day, index) => (
+                      <tr 
+                        key={index} 
+                        className={`
+                          ${day.isWeekend ? 'bg-gray-900 text-gray-500' : 'hover:bg-gray-700'}
+                        `}
+                      >
+                        <td className="p-2 border border-gray-700 text-center">
+                          {format(day.date, 'dd.MM.yyyy')}
+                        </td>
+                        <td className="p-2 border border-gray-700 text-center">
+                          {format(day.date, 'EEEE', { locale: ru })}
+                          {day.isWeekend && <div className="text-xs text-red-400">(выходной)</div>}
+                        </td>
+                        <td className="p-2 border border-gray-700">
+                          {day.isWeekend ? (
+                            <div className="italic">Выходной день</div>
+                          ) : day.operations.length === 0 ? (
+                            <div className="text-gray-500">Нет операций</div>
+                          ) : (
+                            <div className="space-y-2">
+                              {day.operations.map((op, opIndex) => (
+                                <div 
+                                  key={`${op.orderId}-${op.opNumber}-${opIndex}`} 
+                                  className="p-2 bg-gray-700 rounded"
+                                >
+                                  <div className="flex justify-between mb-1">
+                                    <span className="font-medium text-indigo-400">
+                                      {op.blueprintNumber}
+                                    </span>
+                                    <span className="text-sm bg-indigo-900 px-2 py-0.5 rounded">
+                                      ID: {op.orderId}
+                                    </span>
+                                  </div>
+                                  <div className="text-sm">
+                                    <span className="font-medium">Операция #{op.opNumber}</span>
+                                    <span className="mx-2">|</span>
+                                    <span>Количество: {op.quantity}</span>
+                                  </div>
+                                  <div className="text-xs text-gray-400 mt-1">
+                                    <span>
+                                      {format(new Date(op.startDate), 'dd.MM.yyyy')} - {format(new Date(op.endDate), 'dd.MM.yyyy')}
+                                    </span>
+                                    <span className="mx-2">|</span>
+                                    <span>Длительность: {op.opTime} мин.</span>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  // Если нет данных, показываем сообщение
+  if (operations.length === 0) {
+    return (
+      <div className="bg-gray-800 p-6 rounded-xl text-center">
+        <p className="text-xl text-gray-400">Нет данных о операциях для отображения</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-gray-800 p-4 rounded-xl">
+        <label className="block text-sm mb-2">Выберите станок:</label>
+        <select 
+          value={selectedMachine || ''}
+          onChange={(e) => setSelectedMachine(e.target.value)}
+          className="w-full p-3 rounded bg-gray-700 text-white"
+        >
+          {machines.map(name => (
+            <option key={name} value={name}>
+              {name}
+            </option>
+          ))}
+        </select>
+      </div>
+      
+      {/* Календарь для выбранного станка */}
+      {renderMachineCalendar()}
+    </div>
+  );
+};
+
+export default MachineOperationsCalendar;
 
 ================================================================================
 
@@ -2090,26 +2481,30 @@ export default MachineOrdersList;
 
 ### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\MachineScheduleCalendar.tsx
 import React, { useState, useEffect } from 'react';
-import { fetchOrders, fetchMachines, Machine, MachineType } from '../api/ordersApi';
+import { fetchOrders, fetchMachines, getOrderById, deleteOrder, updateOrder, Machine, MachineType, Order } from '../api/ordersApi';
 import { addDays, format, eachDayOfInterval, getDay, isSameDay, differenceInDays, isWeekend as dateFnsIsWeekend } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 import axios from 'axios';
+import OrderDetailView from './OrderDetailView';
+
 
 // API URL для бэкенда
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:3000';
 
 // Интерфейс для данных операции из БД
 interface OperationData {
-  id: number;
-  blueprint_number: string;
+  id?: number;
+  blueprint_number?: string;
   op_number: number;
-  quantity: number;
-  deadline: string;
-  start_date: string;
-  end_date: string;
-  assigned_machine: string;
+  quantity?: number;
+  deadline?: string;
+  start_date?: string;
+  end_date?: string;
+  assigned_machine?: string;
+  op_time?: number;
+  op_axes?: string;
 }
 
 interface CalendarItem {
@@ -2152,11 +2547,24 @@ const MachineScheduleCalendar: React.FC = () => {
   const [endDate, setEndDate] = useState<Date>(addDays(new Date(), 90)); // По умолчанию 3 месяца
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
+  const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
+  const [formVisible, setFormVisible] = useState<boolean>(false);
+    const [isEditing, setIsEditing] = useState<boolean>(false);
+  
+  // Состояния для детального просмотра заказа
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  const [showDetailView, setShowDetailView] = useState<boolean>(false);
 
   // Проверка, является ли день выходным (пятница или суббота)
   const isWeekend = (date: Date): boolean => {
     const day = date.getDay();
     return day === 5 || day === 6; // 5 - пятница, 6 - суббота
+  };
+
+  const handleSelectOrder = (id: number) => {
+    console.log('Выбран заказ с ID:', id);
+    setSelectedOrderId(id);
   };
 
   // Функция для прямого запроса операций из БД
@@ -2208,6 +2616,115 @@ const MachineScheduleCalendar: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const loadOrderDetails = async (id: number) => {
+      console.log('Загрузка деталей заказа с ID:', id);
+      try {
+        const response = await getOrderById(id);
+        console.log('Получены детали заказа (оригинал):', response);
+        
+        // Проверяем наличие свойств в snake_case и адаптируем их
+        const orderDetails = {
+          ...response,
+          // Проверяем наличие свойств и их типы безопасным способом
+          blueprintNumber: response.blueprintNumber || ((response as any).blueprint_number) || '',
+          machineName: response.machineName || ((response as any).machine_name),
+          startDate: response.startDate || ((response as any).start_date),
+          willMeetDeadline: response.willMeetDeadline !== undefined ? response.willMeetDeadline : ((response as any).will_meet_deadline),
+          completedQuantity: response.completedQuantity !== undefined ? response.completedQuantity : ((response as any).completed_quantity),
+          remainingQuantity: response.remainingQuantity !== undefined ? response.remainingQuantity : ((response as any).remaining_quantity)
+        };
+        
+        console.log('Адаптированные детали заказа:', orderDetails);
+        setOrderToEdit(orderDetails);
+        setFormVisible(true);
+        setIsEditing(true);
+      } catch (error) {
+        console.error('Ошибка при загрузке деталей заказа:', error);
+        setSelectedOrderId(null);
+      }
+    };
+
+  // Функция для отображения детального вида заказа
+  const showOrderDetail = async (operation: OperationSchedule) => {
+    try {
+      // Загружаем полные данные о заказе по ID из операции
+      const order = await getOrderById(operation.orderId);
+      
+      if (order) {
+        // Устанавливаем детальный заказ для просмотра
+        setDetailOrder(order);
+        setShowDetailView(true);
+      } else {
+        // Если заказ не найден, создаем временный объект на основе данных операции
+        const tempOrder: Order = {
+          id: operation.orderId,
+          blueprintNumber: operation.orderNumber,
+          deadline: operation.deadline,
+          quantity: operation.quantity,
+          willMeetDeadline: true, // значение по умолчанию
+          remainingQuantity: operation.quantity, // значение по умолчанию
+          priority: 1, // значение по умолчанию
+          status: 'в работе', // значение по умолчанию
+          operations: [{
+            opNumber: operation.operationNumber,
+            opTime: 0, // нет информации о времени в OperationSchedule
+            opAxes: '', // нет информации о типе в OperationSchedule
+            assignedMachine: operation.machineName,
+            startDate: format(operation.startDate, 'yyyy-MM-dd'),
+            endDate: format(operation.endDate, 'yyyy-MM-dd')
+          }]
+        };
+        
+        setDetailOrder(tempOrder);
+        setShowDetailView(true);
+      }
+    } catch (error) {
+      console.error('Ошибка при загрузке данных заказа:', error);
+      setError('Не удалось загрузить детали заказа');
+    }
+  };
+
+  // Функция для закрытия детального вида
+  const closeDetailView = () => {
+    setShowDetailView(false);
+    setDetailOrder(null);
+  };
+
+  // Функция для редактирования заказа
+  const handleEditOrder = (id: number) => {
+    window.open(`/orders?edit=${id}`, '_blank');
+    closeDetailView();
+  };
+
+  // Функция для удаления заказа
+  const handleDelete = async (id: number) => {
+      if (window.confirm('Вы уверены, что хотите удалить этот заказ?')) {
+        try {
+          await deleteOrder(id);
+          // Если удаляемый заказ сейчас отображается в детальном виде, закрываем детальный вид
+          if (detailOrder && detailOrder.id === id) {
+            closeDetailView();
+          }
+        } catch (error) {
+          console.error('Ошибка при удалении заказа:', error);
+        }
+      }
+    };
+
+  // Функция для завершения заказа
+  const handleComplete = async (id: number) => {
+      try {
+        await updateOrder(id, { status: 'завершен' });
+        // Если заказ открыт в детальном просмотре, обновляем его там тоже
+        if (detailOrder && detailOrder.id === id) {
+          const updatedOrder = { ...detailOrder, status: 'завершен' };
+          setDetailOrder(updatedOrder);
+        }
+      } catch (error) {
+        console.error('Ошибка при завершении заказа:', error);
+      }
+    };
 
   // Загрузка данных о станках
   useEffect(() => {
@@ -2412,11 +2929,12 @@ const MachineScheduleCalendar: React.FC = () => {
                           return (
                             <div 
                               key={`${op.orderId}-${op.operationNumber}-${idx}`}
-                              className={`p-1 mb-1 rounded text-white ${
+                              className={`p-1 mb-1 rounded text-white cursor-pointer ${
                                 isOverdue ? 'bg-red-800' : 
                                 isDeadlineClose ? 'bg-yellow-800' : 
                                 'bg-indigo-900'
                               }`}
+                              onClick={() => showOrderDetail(op)}
                             >
                               <div className="font-semibold truncate">{op.orderNumber}</div>
                               <div>ID: {op.orderId}</div>
@@ -2550,7 +3068,7 @@ const MachineScheduleCalendar: React.FC = () => {
                     return (
                       <div 
                         key={`${op.orderId}-${op.operationNumber}`}
-                        className={`absolute h-8 rounded text-xs flex items-center justify-center overflow-hidden ${
+                        className={`absolute h-8 rounded text-xs flex items-center justify-center overflow-hidden cursor-pointer ${
                           isOverdue ? 'bg-red-700' : 
                           isCloseToDeadline ? 'bg-yellow-700' : 
                           'bg-indigo-700'
@@ -2561,6 +3079,7 @@ const MachineScheduleCalendar: React.FC = () => {
                           top: '4px'
                         }}
                         title={`ID: ${op.orderId}, Чертеж: ${op.orderNumber}, Операция #${op.operationNumber}, Кол-во: ${op.quantity}, Срок: ${format(deadlineDate, 'dd.MM.yyyy')}`}
+                        onClick={() => showOrderDetail(op)}
                       >
                         <span className="truncate px-1">{op.orderNumber} #{op.operationNumber}</span>
                       </div>
@@ -2652,6 +3171,20 @@ const MachineScheduleCalendar: React.FC = () => {
           </div>
         </>
       )}
+      
+      {/* Модальное окно с деталями заказа */}
+      {showDetailView && detailOrder && (
+        <OrderDetailView
+          order={detailOrder}
+          onClose={closeDetailView}
+          onEdit={(id) => {
+            handleSelectOrder(id);
+            closeDetailView();
+          }}
+          onDelete={handleDelete}
+          onComplete={handleComplete}
+        />
+      )}
     </div>
   );
 };
@@ -2709,6 +3242,483 @@ const Navbar: React.FC = () => {
 
 export default Navbar;
 
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\OperationsSchedulerPage.tsx
+import React, { useState, useEffect } from 'react';
+import { fetchOrders } from '../api/ordersApi';
+import MachineOperationsCalendar from './MachineOperationsCalendar';
+import SequentialOperationsView from './SequentialOperationsView';
+import { addDays, format, parseISO } from 'date-fns';
+
+// Интерфейсы для типов данных
+interface OrderOperation {
+  orderId: number;
+  blueprintNumber: string;
+  quantity: number;
+  opNumber: number;
+  opTime: number;
+  startDate: Date;
+  endDate: Date;
+  assignedMachine: string;
+}
+
+// Константы для расчета операций
+const MINUTES_PER_DAY = 960; // 16 часов в день
+const SETUP_TIME = 480; // 8 часов на наладку
+
+const OperationsSchedulerPage: React.FC = () => {
+  const [operations, setOperations] = useState<OrderOperation[]>([]);
+  const [startDate, setStartDate] = useState<Date>(new Date());
+  const [endDate, setEndDate] = useState<Date>(addDays(new Date(), 30)); // По умолчанию показываем месяц
+  const [activeView, setActiveView] = useState<'calendar' | 'sequential'>('sequential');
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  // Проверка, является ли день выходным (пятница или суббота)
+  const isWeekend = (date: Date): boolean => {
+    const day = date.getDay();
+    return day === 5 || day === 6; // 5 - пятница, 6 - суббота
+  };
+
+  // Добавление рабочих дней к дате с учетом выходных (пятница, суббота)
+  const addWorkingDays = (date: Date, days: number): Date => {
+    let result = new Date(date);
+    let remainingDays = days;
+    
+    while (remainingDays > 0) {
+      result = addDays(result, 1);
+      
+      // Пропускаем выходные дни
+      if (!isWeekend(result)) {
+        remainingDays--;
+      }
+    }
+    
+    return result;
+  };
+
+  useEffect(() => {
+    loadOperations();
+  }, []);
+
+  const loadOperations = async () => {
+    setLoading(true);
+    try {
+      // Загружаем заказы из API
+      const orders = await fetchOrders();
+      
+      const allOperations: OrderOperation[] = [];
+      
+      // Обрабатываем каждый заказ и его операции
+      orders.forEach(order => {
+        if (order.operations && order.operations.length > 0) {
+          // Сортируем операции по номеру
+          const sortedOperations = [...order.operations].sort((a, b) => a.opNumber - b.opNumber);
+          
+          let prevOpEndDate: Date | null = null;
+          
+          // Обрабатываем каждую операцию заказа
+          sortedOperations.forEach(op => {
+            if (op.assignedMachine) {
+              // Определяем дату начала операции
+              let startDate: Date;
+              
+              if (op.startDate) {
+                // Если дата уже задана, используем её
+                startDate = new Date(op.startDate);
+              } else if (prevOpEndDate) {
+                // Если есть предыдущая операция, начинаем после неё
+                startDate = addDays(prevOpEndDate, 1);
+                // Если новая дата - выходной, переносим на следующий рабочий день
+                while (isWeekend(startDate)) {
+                  startDate = addDays(startDate, 1);
+                }
+              } else {
+                // По умолчанию начинаем с текущей даты
+                startDate = new Date();
+              }
+              
+              // Расчет времени выполнения операции
+              const operationTime = op.opTime * order.quantity; // время операции * количество
+              const totalTime = operationTime + SETUP_TIME; // общее время = время операции + время наладки
+              const requiredDays = Math.ceil(totalTime / MINUTES_PER_DAY); // Округляем вверх до целого числа дней
+              
+              // Рассчитываем дату окончания с учетом рабочих дней
+              const endDate = addWorkingDays(startDate, requiredDays);
+              
+              // Сохраняем дату окончания для следующей операции
+              prevOpEndDate = endDate;
+              
+              // Добавляем операцию в общий список
+              allOperations.push({
+                orderId: order.id,
+                blueprintNumber: order.blueprintNumber,
+                quantity: order.quantity,
+                opNumber: op.opNumber,
+                opTime: op.opTime,
+                startDate: startDate,
+                endDate: endDate,
+                assignedMachine: op.assignedMachine
+              });
+            }
+          });
+        }
+      });
+      
+      console.log('Обработано операций:', allOperations.length);
+      setOperations(allOperations);
+      
+      // Если есть операции, настраиваем диапазон дат для отображения
+      if (allOperations.length > 0) {
+        // Находим самую раннюю и самую позднюю даты
+        const earliestDate = new Date(Math.min(
+          ...allOperations.map(op => op.startDate.getTime())
+        ));
+        
+        const latestDate = new Date(Math.max(
+          ...allOperations.map(op => op.endDate.getTime())
+        ));
+        
+        setStartDate(earliestDate);
+        setEndDate(latestDate);
+      }
+      
+      setError(null);
+    } catch (err: any) {
+      console.error('Ошибка при загрузке данных:', err);
+      setError(`Ошибка при загрузке данных: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-r from-gray-900 via-gray-800 to-gray-900 text-white p-8">
+      <header className="flex justify-between items-center mb-10">
+        <h1 className="text-4xl font-bold">Планирование операций</h1>
+        <div className="flex gap-4">
+          <button 
+            className="bg-indigo-600 hover:bg-indigo-500 py-2 px-6 rounded-xl"
+            onClick={loadOperations}
+          >
+            Обновить данные
+          </button>
+        </div>
+      </header>
+
+      {loading ? (
+        <div className="flex justify-center items-center py-10">
+          <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-600"></div>
+          <p className="ml-2">Загрузка операций...</p>
+        </div>
+      ) : error ? (
+        <div className="bg-red-800 p-4 rounded-xl mb-6">
+          <p>{error}</p>
+          <button 
+            className="mt-2 px-4 py-2 bg-white text-red-800 rounded hover:bg-gray-200"
+            onClick={loadOperations}
+          >
+            Попробовать снова
+          </button>
+        </div>
+      ) : (
+        <>
+          <div className="mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+              <div>
+                <label className="block text-sm mb-2">Начальная дата:</label>
+                <input
+                  type="date"
+                  value={format(startDate, 'yyyy-MM-dd')}
+                  onChange={(e) => setStartDate(parseISO(e.target.value))}
+                  className="w-full p-3 rounded bg-gray-700 text-white"
+                />
+              </div>
+              <div>
+                <label className="block text-sm mb-2">Конечная дата:</label>
+                <input
+                  type="date"
+                  value={format(endDate, 'yyyy-MM-dd')}
+                  onChange={(e) => setEndDate(parseISO(e.target.value))}
+                  className="w-full p-3 rounded bg-gray-700 text-white"
+                />
+              </div>
+              <div className="md:col-span-2 flex items-end">
+                <div className="flex bg-gray-700 rounded p-1 w-full">
+                  <button
+                    className={`flex-1 py-2 px-4 rounded ${
+                      activeView === 'sequential' ? 'bg-indigo-600 text-white' : 'text-gray-300'
+                    }`}
+                    onClick={() => setActiveView('sequential')}
+                  >
+                    Последовательность
+                  </button>
+                  <button
+                    className={`flex-1 py-2 px-4 rounded ${
+                      activeView === 'calendar' ? 'bg-indigo-600 text-white' : 'text-gray-300'
+                    }`}
+                    onClick={() => setActiveView('calendar')}
+                  >
+                    Календарь станков
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {operations.length === 0 ? (
+            <div className="bg-gray-800 p-6 rounded-xl text-center">
+              <p className="text-xl">Нет данных о операциях. Распределите заказы по станкам в разделе "Расчет загрузки".</p>
+            </div>
+          ) : (
+            <>
+              {activeView === 'sequential' ? (
+                <SequentialOperationsView operations={operations} />
+              ) : (
+                <MachineOperationsCalendar 
+                  operations={operations}
+                  startDate={startDate}
+                  endDate={endDate}
+                />
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+export default OperationsSchedulerPage;
+
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\OrderDetailView.tsx
+//frontend\src\components\OrderDetailView.tsx
+
+import React from 'react';
+import { Order } from '../api/ordersApi';
+import { format } from 'date-fns';
+
+
+interface OrderDetailViewProps {
+  order: Order;
+  onClose: () => void;
+  onEdit: (id: number) => void;
+  onDelete: (id: number) => void;
+  onComplete: (id: number) => void;
+}
+
+const OrderDetailView: React.FC<OrderDetailViewProps> = ({ 
+  order, 
+  onClose, 
+  onEdit, 
+  onDelete,
+  onComplete
+}) => {
+  // Форматирование даты
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return 'Не указано';
+    try {
+      return format(new Date(dateStr), 'dd.MM.yyyy');
+    } catch {
+      return dateStr;
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black bg-opacity-75">
+      <div className="relative bg-gray-800 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] overflow-auto">
+        {/* Заголовок и кнопка закрытия */}
+        <div className="sticky top-0 bg-gray-800 p-4 border-b border-gray-700 flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-white">
+            Детали заказа #{order.id}
+          </h2>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white focus:outline-none"
+          >
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+            </svg>
+          </button>
+        </div>
+
+        {/* Основная информация */}
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            <div className="bg-gray-700 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 text-indigo-300">Основная информация</h3>
+              <div className="space-y-2">
+                <p><span className="text-gray-400">Чертеж:</span> <span className="font-medium">{order.blueprintNumber}</span></p>
+                <p><span className="text-gray-400">Статус:</span> 
+                  <span className={`ml-2 px-2 py-0.5 rounded-full text-xs ${
+                    order.status === 'новый' ? 'bg-blue-900 text-blue-200' :
+                    order.status === 'в работе' ? 'bg-yellow-900 text-yellow-200' :
+                    order.status === 'завершен' ? 'bg-green-900 text-green-200' :
+                    'bg-gray-900 text-gray-200'
+                  }`}>
+                    {order.status}
+                  </span>
+                </p>
+                <p><span className="text-gray-400">Количество:</span> {order.quantity} шт</p>
+                <p><span className="text-gray-400">Выполнено:</span> {order.completedQuantity || 0} из {order.quantity} шт</p>
+                <p><span className="text-gray-400">Осталось:</span> {order.remainingQuantity || (order.quantity - (order.completedQuantity || 0))} шт</p>
+                <p><span className="text-gray-400">Приоритет:</span> {order.priority}</p>
+                <p><span className="text-gray-400">Станок:</span> {order.machineName || 'Не назначен'}</p>
+              </div>
+            </div>
+            
+            <div className="bg-gray-700 p-4 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 text-indigo-300">Сроки и прогресс</h3>
+              <div className="space-y-2">
+                <p><span className="text-gray-400">Дата начала:</span> {formatDate(order.startDate)}</p>
+                <p><span className="text-gray-400">Дедлайн:</span> {formatDate(order.deadline)}</p>
+                <p><span className="text-gray-400">Расчетное окончание:</span> {formatDate(order.estimatedCompletion)}</p>
+                <p><span className="text-gray-400">Расчетные дни:</span> {order.estimatedWorkdays || 'Не рассчитано'}</p>
+                <p><span className="text-gray-400">Уложится в срок:</span> 
+                  <span className={`ml-2 ${order.willMeetDeadline ? 'text-green-500' : 'text-red-500'}`}>
+                    {order.willMeetDeadline ? 'Да' : 'Нет'}
+                  </span>
+                </p>
+                <p><span className="text-gray-400">Запас времени:</span> 
+                  <span className={`ml-2 ${(order.timeMargin || 0) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
+                    {order.timeMargin || 0} дней
+                  </span>
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Операции */}
+          <div className="bg-gray-700 p-4 rounded-lg mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-indigo-300">Операции</h3>
+            {!order.operations || order.operations.length === 0 ? (
+              <p className="text-gray-400 italic">Нет операций для этого заказа</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-600">
+                      <th className="text-left p-2">№</th>
+                      <th className="text-left p-2">Тип</th>
+                      <th className="text-left p-2">Время (мин.)</th>
+                      <th className="text-left p-2">Станок</th>
+                      <th className="text-left p-2">Начало</th>
+                      <th className="text-left p-2">Окончание</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {order.operations.map((op, index) => (
+                      <tr key={index} className="border-b border-gray-600">
+                        <td className="p-2">{op.opNumber}</td>
+                        <td className="p-2">{op.opAxes}</td>
+                        <td className="p-2">{op.opTime}</td>
+                        <td className="p-2">{op.assignedMachine || 'Не назначен'}</td>
+                        <td className="p-2">{op.startDate ? formatDate(op.startDate.toString()) : 'Не указано'}</td>
+                        <td className="p-2">{op.endDate ? formatDate(op.endDate.toString()) : 'Не указано'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Дополнительная информация */}
+          <div className="bg-gray-700 p-4 rounded-lg mb-6">
+            <h3 className="text-lg font-semibold mb-4 text-indigo-300">Дополнительная информация</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <p><span className="text-gray-400">Материал:</span> {order.materialType || 'Не указан'}</p>
+                {order.pdfPath && (
+                  <p>
+                    <span className="text-gray-400">PDF:</span> 
+                    <a 
+                      href={order.pdfPath} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="ml-2 text-indigo-400 hover:text-indigo-300"
+                    >
+                      Открыть PDF
+                    </a>
+                  </p>
+                )}
+              </div>
+              <div>
+                {order.drawingUrl && (
+                  <p>
+                    <span className="text-gray-400">Чертеж:</span> 
+                    <a 
+                      href={order.drawingUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="ml-2 text-indigo-400 hover:text-indigo-300"
+                    >
+                      Открыть чертеж
+                    </a>
+                  </p>
+                )}
+                {order.previewUrl && (
+                  <p>
+                    <span className="text-gray-400">Превью:</span> 
+                    <a 
+                      href={order.previewUrl} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="ml-2 text-indigo-400 hover:text-indigo-300"
+                    >
+                      Просмотр
+                    </a>
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Панель действий */}
+        <div className="sticky bottom-0 bg-gray-800 p-4 border-t border-gray-700 flex justify-end space-x-4">
+          <button
+            onClick={() => onEdit(order.id)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg"
+          >
+            Редактировать
+          </button>
+          {order.status !== 'завершен' && (
+            <button
+              onClick={() => onComplete(order.id)}
+              className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg"
+            >
+              Завершить
+            </button>
+          )}
+          <button
+            onClick={() => {
+              if (window.confirm(`Вы уверены, что хотите удалить заказ #${order.id}?`)) {
+                onDelete(order.id);
+                onClose();
+              }
+            }}
+            className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg"
+          >
+            Удалить
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-600 hover:bg-gray-500 text-white rounded-lg"
+          >
+            Закрыть
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default OrderDetailView;
 
 ================================================================================
 
@@ -3559,35 +4569,92 @@ import { fetchOrders, deleteOrder, updateOrder, getOrderById, Order } from '../a
 import OrderForm from './OrderForm';
 import OrdersList from './OrdersList';
 import MachineOrdersList from './MachineOrdersList';
+import SearchBar from './SearchBar';
+import OrderDetailView from './OrderDetailView';
 import * as XLSX from 'xlsx';
 import { saveAs } from 'file-saver';
 
 const OrdersPage: React.FC = () => {
   const [orders, setOrders] = useState<Order[]>([]);
+  const [filteredOrders, setFilteredOrders] = useState<Order[]>([]); 
   const [selectedOrderId, setSelectedOrderId] = useState<number | null>(null);
   const [orderToEdit, setOrderToEdit] = useState<Order | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [formVisible, setFormVisible] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  // Новое состояние для переключения между "Распределить" и "Назначено на станки"
+  const [searchTerm, setSearchTerm] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'distribute' | 'assigned'>('distribute');
+  
+  // Новые состояния для детального просмотра заказа
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
+  const [showDetailView, setShowDetailView] = useState<boolean>(false);
 
   useEffect(() => {
     loadOrders();
   }, []);
 
+  // Эффект для фильтрации заказов при изменении списка заказов или поискового запроса
   useEffect(() => {
-    if (selectedOrderId) {
-      loadOrderDetails(selectedOrderId);
+    filterOrders();
+  }, [orders, searchTerm, statusFilter]);
+
+  // Функция фильтрации заказов
+  const filterOrders = () => {
+    let result = [...orders];
+    
+    // Фильтрация по поисковому запросу
+    if (searchTerm) {
+      result = result.filter(order => 
+        order.blueprintNumber.toLowerCase().startsWith(searchTerm.toLowerCase())
+      );
     }
-  }, [selectedOrderId]);
+    
+    // Фильтрация по статусу
+    if (statusFilter !== 'all') {
+      result = result.filter(order => order.status === statusFilter);
+    }
+    
+    setFilteredOrders(result);
+  };
+
+  // Обработчик живого поиска (фильтрация при вводе)
+  const handleSearch = (term: string) => {
+    setSearchTerm(term);
+  };
+
+  // Обработчик отправки поиска (нажатие Enter или кнопка)
+  const handleSearchSubmit = (term: string) => {
+    // Если есть результаты поиска, показываем первый найденный заказ в детальном виде
+    const searchResults = orders.filter(order => 
+      order.blueprintNumber.toLowerCase().startsWith(term.toLowerCase())
+    );
+    
+    if (searchResults.length > 0) {
+      showOrderDetail(searchResults[0]);
+    } else {
+      alert(`Заказы по запросу "${term}" не найдены`);
+    }
+  };
+
+  // Функция для отображения детального вида заказа
+  const showOrderDetail = (order: Order) => {
+    setDetailOrder(order);
+    setShowDetailView(true);
+  };
+
+  // Функция для закрытия детального вида
+  const closeDetailView = () => {
+    setShowDetailView(false);
+    setDetailOrder(null);
+  };
 
   const loadOrders = async () => {
     setIsLoading(true);
     try {
       const data = await fetchOrders();
       setOrders(data);
+      setFilteredOrders(data);
     } catch (error) {
       console.error('Ошибка при загрузке заказов:', error);
     } finally {
@@ -3643,10 +4710,6 @@ const OrdersPage: React.FC = () => {
     setSelectedOrderId(id);
   };
 
-  const filteredOrders = statusFilter === 'all'
-    ? orders
-    : orders.filter((order) => order.status === statusFilter);
-
   const exportToExcel = () => {
     const worksheet = XLSX.utils.json_to_sheet(filteredOrders);
     const workbook = XLSX.utils.book_new();
@@ -3661,6 +4724,10 @@ const OrdersPage: React.FC = () => {
       try {
         await deleteOrder(id);
         loadOrders();
+        // Если удаляемый заказ сейчас отображается в детальном виде, закрываем детальный вид
+        if (detailOrder && detailOrder.id === id) {
+          closeDetailView();
+        }
       } catch (error) {
         console.error('Ошибка при удалении заказа:', error);
       }
@@ -3671,6 +4738,11 @@ const OrdersPage: React.FC = () => {
     try {
       await updateOrder(id, { status: 'завершен' });
       loadOrders();
+      // Если заказ открыт в детальном просмотре, обновляем его там тоже
+      if (detailOrder && detailOrder.id === id) {
+        const updatedOrder = { ...detailOrder, status: 'завершен' };
+        setDetailOrder(updatedOrder);
+      }
     } catch (error) {
       console.error('Ошибка при завершении заказа:', error);
     }
@@ -3745,6 +4817,57 @@ const OrdersPage: React.FC = () => {
         </div>
       )}
 
+      {/* Блок поиска с инструкцией по использованию Enter */}
+      <div className="mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <div className="md:col-span-3">
+            <SearchBar 
+              onSearch={handleSearch} 
+              onSearchSubmit={handleSearchSubmit}
+              placeholder="Введите номер чертежа и нажмите Enter для подробного просмотра..." 
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              Подсказка: введите номер чертежа и нажмите Enter, чтобы увидеть подробную информацию о заказе
+            </p>
+          </div>
+          <div>
+            <select
+              className="w-full p-3 rounded-lg bg-gray-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="all">Все статусы</option>
+              <option value="новый">Новые</option>
+              <option value="в работе">В работе</option>
+              <option value="приостановлен">Приостановлены</option>
+              <option value="завершен">Завершённые</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      
+      {/* Результаты поиска - отображаем, если есть поисковый запрос */}
+      {searchTerm && (
+        <div className="mb-6">
+          <h2 className="text-xl font-semibold mb-2">Результаты поиска по запросу: "{searchTerm}"</h2>
+          {filteredOrders.length === 0 ? (
+            <p className="bg-gray-800 p-4 rounded-xl text-center">Заказы не найдены</p>
+          ) : (
+            <div className="flex justify-between items-center">
+              <p className="text-gray-400">Найдено заказов: {filteredOrders.length}</p>
+              {filteredOrders.length === 1 && (
+                <button
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg"
+                  onClick={() => showOrderDetail(filteredOrders[0])}
+                >
+                  Просмотреть детали
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Вкладки для переключения между "Распределить" и "Назначено на станки" */}
       <div className="flex border-b border-gray-700 mb-6">
         <button
@@ -3763,24 +4886,26 @@ const OrdersPage: React.FC = () => {
 
       {activeTab === 'distribute' && (
         <>
-          <div className="mt-8 flex gap-4">
-            <button onClick={() => setStatusFilter('all')} className={`px-4 py-2 rounded-xl ${statusFilter === 'all' ? 'bg-indigo-600' : 'bg-gray-700'}`}>Все</button>
-            <button onClick={() => setStatusFilter('новый')} className={`px-4 py-2 rounded-xl ${statusFilter === 'новый' ? 'bg-indigo-600' : 'bg-gray-700'}`}>Новые</button>
-            <button onClick={() => setStatusFilter('в работе')} className={`px-4 py-2 rounded-xl ${statusFilter === 'в работе' ? 'bg-indigo-600' : 'bg-gray-700'}`}>В работе</button>
-            <button onClick={() => setStatusFilter('завершен')} className={`px-4 py-2 rounded-xl ${statusFilter === 'завершен' ? 'bg-indigo-600' : 'bg-gray-700'}`}>Завершённые</button>
-          </div>
-
           {isLoading ? (
             <div className="text-center py-10">
               <div className="inline-block animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-indigo-600"></div>
               <p className="mt-2">Загрузка заказов...</p>
             </div>
           ) : (
-            <div className="mt-12 h-[500px] overflow-y-auto pr-2">
+            <div className="mt-4 h-[600px] overflow-y-auto pr-2">
               <OrdersList
                 orders={filteredOrders}
                 onDelete={handleDelete}
-                onSelect={handleSelectOrder}
+                onSelect={(id) => {
+                  // Находим заказ по ID и показываем детальный вид
+                  const order = orders.find(o => o.id === id);
+                  if (order) {
+                    showOrderDetail(order);
+                  } else {
+                    // Если заказ не найден в кэше, загружаем его с сервера
+                    handleSelectOrder(id);
+                  }
+                }}
                 onComplete={handleComplete}
               />
             </div>
@@ -3792,6 +4917,20 @@ const OrdersPage: React.FC = () => {
         <div className="mt-8">
           <MachineOrdersList onMarkCompleted={handleMarkCompleted} />
         </div>
+      )}
+
+      {/* Модальное окно детального просмотра заказа */}
+      {showDetailView && detailOrder && (
+        <OrderDetailView
+          order={detailOrder}
+          onClose={closeDetailView}
+          onEdit={(id) => {
+            handleSelectOrder(id);
+            closeDetailView();
+          }}
+          onDelete={handleDelete}
+          onComplete={handleComplete}
+        />
       )}
     </div>
   );
@@ -3864,41 +5003,61 @@ export default PdfViewer;
 import React, { useState } from 'react';
 
 interface SearchBarProps {
-  onSearch: (term: string, machineFilter: string) => void;
+  onSearch: (searchTerm: string) => void;
+  onSearchSubmit: (searchTerm: string) => void; // Новый обработчик для Enter
+  placeholder?: string;
 }
 
-const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
-  const [term, setTerm] = useState('');
-  const [machineFilter, setMachineFilter] = useState('all');
+const SearchBar: React.FC<SearchBarProps> = ({ 
+  onSearch, 
+  onSearchSubmit, 
+  placeholder = 'Введите номер чертежа...' 
+}) => {
+  const [inputValue, setInputValue] = useState('');
+
+  // Обработчик изменения текста в поле поиска
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInputValue(value);
+    // Вызываем функцию поиска при каждом изменении текста
+    onSearch(value);
+  };
+
+  // Обработчик нажатия клавиши Enter
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && inputValue.trim()) {
+      e.preventDefault();
+      onSearchSubmit(inputValue);
+    }
+  };
+
+  // Обработчик клика по кнопке поиска
+  const handleSearchClick = () => {
+    if (inputValue.trim()) {
+      onSearchSubmit(inputValue);
+    }
+  };
 
   return (
-    <div className="flex gap-4 mb-6">
+    <div className="relative flex">
+      <div className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none">
+        <svg className="w-4 h-4 text-gray-400" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20">
+          <path stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m19 19-4-4m0-7A7 7 0 1 1 1 8a7 7 0 0 1 14 0Z"/>
+        </svg>
+      </div>
       <input
         type="text"
-        placeholder="Поиск по ID или Blueprint"
-        value={term}
-        onChange={(e) => setTerm(e.target.value)}
-        className="p-3 rounded bg-gray-700 text-white w-full"
+        className="block w-full p-3 pl-10 pr-16 rounded-lg bg-gray-700 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-gray-600"
+        placeholder={placeholder}
+        value={inputValue}
+        onChange={handleInputChange}
+        onKeyDown={handleKeyDown}
       />
-      <select
-        value={machineFilter}
-        onChange={(e) => setMachineFilter(e.target.value)}
-        className="p-3 rounded bg-gray-700 text-white"
-      >
-        <option value="all">Все станки</option>
-        <option value="Doosan Hadasha">Doosan Hadasha</option>
-        <option value="Doosan Yashana">Doosan Yashana</option>
-        <option value="Pinnacle Gdola">Pinnacle Gdola</option>
-        <option value="Pinnacle Ktana">Pinnacle Ktana</option>
-        <option value="Mitsubishi">Mitsubishi</option>
-        <option value="Okuma">Okuma</option>
-        <option value="JohnFord">JohnFord</option>
-      </select>
       <button
-        onClick={() => onSearch(term, machineFilter)}
-        className="bg-indigo-600 hover:bg-indigo-500 px-6 rounded"
+        onClick={handleSearchClick}
+        className="absolute right-1 inset-y-1 px-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg"
       >
-        🔍 Найти
+        Найти
       </button>
     </div>
   );
@@ -3906,6 +5065,302 @@ const SearchBar: React.FC<SearchBarProps> = ({ onSearch }) => {
 
 export default SearchBar;
 
+================================================================================
+
+### Файл: C:\Users\apule\Downloads\333\genesys-app\frontend\src\components\SequentialOperationsView.tsx
+import React, { useState, useEffect } from 'react';
+import { format, differenceInCalendarDays } from 'date-fns';
+
+// Интерфейсы для типов данных
+interface OrderOperation {
+  orderId: number;
+  blueprintNumber: string;
+  quantity: number;
+  opNumber: number;
+  opTime: number;
+  startDate: Date;
+  endDate: Date;
+  assignedMachine: string;
+}
+
+interface Order {
+  id: number;
+  blueprintNumber: string;
+  quantity: number;
+  operations: OrderOperation[];
+  deadline?: Date;
+}
+
+interface SequentialOperationsViewProps {
+  operations: OrderOperation[];
+}
+
+const SequentialOperationsView: React.FC<SequentialOperationsViewProps> = ({ operations }) => {
+  const [groupedOrders, setGroupedOrders] = useState<Order[]>([]);
+  const [expandedOrderIds, setExpandedOrderIds] = useState<number[]>([]);
+
+  // Проверка, является ли день выходным (пятница или суббота)
+  const isWeekend = (date: Date): boolean => {
+    const day = date.getDay();
+    return day === 5 || day === 6; // 5 - пятница, 6 - суббота
+  };
+
+  useEffect(() => {
+    // Создаем словарь для группировки операций по заказам
+    const orderMap: Record<number, Order> = {};
+    
+    // Заполняем словарь, группируя операции по ID заказа
+    operations.forEach(op => {
+      if (!orderMap[op.orderId]) {
+        orderMap[op.orderId] = {
+          id: op.orderId,
+          blueprintNumber: op.blueprintNumber,
+          quantity: op.quantity,
+          operations: []
+        };
+      }
+      orderMap[op.orderId].operations.push({...op});
+    });
+    
+    // Для каждого заказа:
+    // 1. Сортируем операции по номеру операции
+    // 2. Проверяем правильность последовательности дат
+    Object.values(orderMap).forEach(order => {
+      // Сортируем операции по номеру
+      order.operations.sort((a, b) => a.opNumber - b.opNumber);
+    });
+    
+    // Преобразуем словарь в массив и сортируем по ID заказа
+    const orders = Object.values(orderMap).sort((a, b) => a.id - b.id);
+    
+    // Если есть заказы, расширяем первый заказ по умолчанию
+    if (orders.length > 0) {
+      setExpandedOrderIds([orders[0].id]);
+    }
+    
+    setGroupedOrders(orders);
+  }, [operations]);
+
+  // Функция для переключения раскрытия/скрытия заказа
+  const toggleOrderExpanded = (orderId: number) => {
+    setExpandedOrderIds(prev => {
+      if (prev.includes(orderId)) {
+        return prev.filter(id => id !== orderId);
+      } else {
+        return [...prev, orderId];
+      }
+    });
+  };
+
+  // Функция для проверки правильности последовательности операций
+  const checkSequentialOperations = (operations: OrderOperation[]): boolean => {
+    if (operations.length < 2) return true;
+    
+    for (let i = 0; i < operations.length - 1; i++) {
+      const currentOp = operations[i];
+      const nextOp = operations[i+1];
+      
+      // Проверяем, что текущая операция заканчивается не позже начала следующей
+      if (new Date(currentOp.endDate).getTime() > new Date(nextOp.startDate).getTime()) {
+        return false;
+      }
+    }
+    
+    return true;
+  };
+
+  // Расчет продолжительности операции в рабочих днях (исключая выходные)
+  const calculateWorkingDays = (startDate: Date, endDate: Date): number => {
+    let workingDays = 0;
+    let currentDate = new Date(startDate);
+    
+    while (currentDate <= endDate) {
+      if (!isWeekend(currentDate)) {
+        workingDays++;
+      }
+      currentDate = new Date(currentDate.setDate(currentDate.getDate() + 1));
+    }
+    
+    return workingDays;
+  };
+
+  // Если нет данных, показываем сообщение
+  if (operations.length === 0) {
+    return (
+      <div className="bg-gray-800 p-6 rounded-xl text-center">
+        <p className="text-xl text-gray-400">Нет данных о операциях для отображения</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold mb-4">Последовательность операций по заказам</h2>
+      
+      {groupedOrders.map(order => {
+        const isOrderExpanded = expandedOrderIds.includes(order.id);
+        const isSequential = checkSequentialOperations(order.operations);
+        
+        return (
+          <div key={order.id} className="bg-gray-800 rounded-xl overflow-hidden">
+            <div 
+              className={`p-4 flex justify-between items-center cursor-pointer ${
+                isSequential ? 'bg-gray-700' : 'bg-red-900'
+              }`}
+              onClick={() => toggleOrderExpanded(order.id)}
+            >
+              <div className="flex items-center">
+                <span className="font-bold mr-2">Заказ ID: {order.id}</span>
+                <span className="font-medium text-indigo-400">{order.blueprintNumber}</span>
+                <span className="ml-4 text-gray-300">Количество: {order.quantity}</span>
+              </div>
+              <div className="flex items-center">
+                {!isSequential && (
+                  <span className="text-red-300 mr-3">⚠️ Нарушена последовательность</span>
+                )}
+                <span className="bg-indigo-600 px-2 py-1 rounded text-xs mr-2">
+                  {order.operations.length} операций
+                </span>
+                <span className="text-gray-400">
+                  {isOrderExpanded ? '▼' : '▶'}
+                </span>
+              </div>
+            </div>
+            
+            {isOrderExpanded && (
+              <div className="p-4">
+                <table className="min-w-full">
+                  <thead>
+                    <tr className="bg-gray-700">
+                      <th className="p-2 text-left">№ операции</th>
+                      <th className="p-2 text-left">Станок</th>
+                      <th className="p-2 text-left">Начало</th>
+                      <th className="p-2 text-left">Окончание</th>
+                      <th className="p-2 text-left">Длительность</th>
+                      <th className="p-2 text-left">Рабочих дней</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {order.operations.map((op, index) => {
+                      const startDate = new Date(op.startDate);
+                      const endDate = new Date(op.endDate);
+                      const workingDays = calculateWorkingDays(startDate, endDate);
+                      const totalDays = differenceInCalendarDays(endDate, startDate) + 1;
+                      
+                      // Проверка на проблему с последовательностью операций
+                      const hasSequenceIssue = index > 0 && 
+                        new Date(order.operations[index-1].endDate).getTime() > startDate.getTime();
+                      
+                      return (
+                        <tr 
+                          key={op.opNumber} 
+                          className={`border-t border-gray-700 ${
+                            hasSequenceIssue ? 'bg-red-900 bg-opacity-30' : ''
+                          }`}
+                        >
+                          <td className="p-2">
+                            <span className="font-medium">#{op.opNumber}</span>
+                            {hasSequenceIssue && (
+                              <span className="ml-2 text-red-500">⚠️</span>
+                            )}
+                          </td>
+                          <td className="p-2">{op.assignedMachine}</td>
+                          <td className="p-2">{format(startDate, 'dd.MM.yyyy')}</td>
+                          <td className="p-2">{format(endDate, 'dd.MM.yyyy')}</td>
+                          <td className="p-2">{op.opTime} мин.</td>
+                          <td className="p-2">
+                            {workingDays} раб. дней 
+                            <span className="text-gray-400 text-xs ml-1">
+                              (всего: {totalDays} дн.)
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                
+                {/* Визуализация последовательности операций на временной шкале */}
+                <div className="mt-4 pt-4 border-t border-gray-700">
+                  <h4 className="text-sm font-medium mb-2">Визуализация последовательности:</h4>
+                  <div className="relative h-16">
+                    {/* Находим самую раннюю и самую позднюю дату для масштабирования шкалы */}
+                    {(() => {
+                      if (order.operations.length === 0) return null;
+                      
+                      const firstOpStartTime = Math.min(
+                        ...order.operations.map(op => new Date(op.startDate).getTime())
+                      );
+                      
+                      const lastOpEndTime = Math.max(
+                        ...order.operations.map(op => new Date(op.endDate).getTime())
+                      );
+                      
+                      const totalDuration = lastOpEndTime - firstOpStartTime;
+                      if (totalDuration <= 0) return null;
+                      
+                      return order.operations.map((op, index) => {
+                        const startPosition = ((new Date(op.startDate).getTime() - firstOpStartTime) / totalDuration) * 100;
+                        const endPosition = ((new Date(op.endDate).getTime() - firstOpStartTime) / totalDuration) * 100;
+                        const width = endPosition - startPosition;
+                        
+                        // Проверяем, есть ли проблема с последовательностью
+                        const hasIssue = index > 0 && 
+                          new Date(order.operations[index-1].endDate).getTime() > new Date(op.startDate).getTime();
+                        
+                        return (
+                          <div 
+                            key={index}
+                            className="absolute h-8 flex items-center justify-center text-xs rounded overflow-hidden"
+                            style={{
+                              left: `${startPosition}%`,
+                              width: `${Math.max(width, 2)}%`, // Минимальная ширина 2% для видимости
+                              backgroundColor: hasIssue ? '#ef4444' : '#6366f1',
+                              top: '0',
+                            }}
+                            title={`Операция ${op.opNumber}: ${format(new Date(op.startDate), 'dd.MM')} - ${format(new Date(op.endDate), 'dd.MM')}`}
+                          >
+                            #{op.opNumber}
+                          </div>
+                        );
+                      });
+                    })()}
+                    
+                    {/* Линия времени */}
+                    <div className="absolute bottom-0 left-0 right-0 h-4 flex border-t border-gray-700">
+                      {order.operations.map((op, index) => {
+                        // Показываем метки только для первой и последней операции
+                        if (index !== 0 && index !== order.operations.length - 1) return null;
+                        
+                        return (
+                          <React.Fragment key={index}>
+                            {index === 0 && (
+                              <div className="absolute left-0 bottom-0 text-xs text-gray-400">
+                                {format(new Date(op.startDate), 'dd.MM.yyyy')}
+                              </div>
+                            )}
+                            
+                            {index === order.operations.length - 1 && (
+                              <div className="absolute right-0 bottom-0 text-xs text-gray-400">
+                                {format(new Date(op.endDate), 'dd.MM.yyyy')}
+                              </div>
+                            )}
+                          </React.Fragment>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+export default SequentialOperationsView;
 
 ================================================================================
 
