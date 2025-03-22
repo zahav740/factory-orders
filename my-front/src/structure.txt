@@ -1,0 +1,92 @@
+Folder PATH listing
+Volume serial number is 6401-F0BA
+C:.
+|   App.css
+|   index.css
+|   main.tsx
+|   structure.txt
+|   vite-env.d.ts
+|   
++---api-client
+|       ordersAdapter.ts
+|       ordersApi.ts
+|       package.json
+|       
++---assets
+|       react.svg
+|       
++---core-ui
+|   |   App.tsx
+|   |   package.json
+|   |   
+|   +---components
+|   |       HomePage.tsx
+|   |       Navbar.tsx
+|   |       
+|   \---styles
+|           App.css
+|           globals.css
+|           index.css
+|           
++---dir app
+|       index.ts
+|       
++---document-viewer
+|   |   package.json
+|   |   
+|   \---components
+|           PdfViewer.tsx
+|           
++---machine-scheduler
+|   |   package.json
+|   |   
+|   +---components
+|   |       MachineOrdersList.tsx
+|   |       MachineScheduleCalendar.tsx
+|   |       SequentialOperationsView.tsx
+|   |       
+|   \---models
+|           ScheduleModels.ts
+|           
++---order-management
+|   |   package.json
+|   |   
+|   +---api
+|   |       ordersApi.ts
+|   |       
+|   \---components
+|           OrderDetailView.tsx
+|           OrderForm.tsx
+|           OrdersList.tsx
+|           OrdersPage.tsx
+|           SearchBar.tsx
+|           
++---public
+|       index.html
+|       
++---schedule-calculator
+|   |   package.json
+|   |   
+|   +---components
+|   |       CalculationPage.tsx
+|   |       MachineOperationsList.tsx
+|   |       
+|   +---services
+|   |       ScheduleService.ts
+|   |       
+|   \---src
++---ui-components
+|   |   index.ts
+|   |   package.json
+|   |   
+|   +---components
+|   |       Button.tsx
+|   |       Input.tsx
+|   |       
+|   \---styles
+|           components.css
+|           
+\---utils
+        package.json
+        utils.ts
+        

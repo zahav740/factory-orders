@@ -1,8 +1,10 @@
+#python save_code.py
+
 import os
 
 # Пути к backend и frontend
 BACKEND_SRC = r"C:\Users\apule\Downloads\333\genesys-app\backend\src"
-FRONTEND_SRC = r"C:\Users\apule\Downloads\333\genesys-app\frontend\src"
+FRONTEND_SRC = r"C:\Users\apule\Downloads\333\genesys-app\my-front\src"
 
 # Файлы, куда будет записан код
 BACKEND_FILE = "backend.txt"

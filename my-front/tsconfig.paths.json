@@ -1,0 +1,15 @@
+{
+    "compilerOptions": {
+      "baseUrl": ".",
+      "paths": {
+        "@core/*": ["src/core-ui/*"],
+        "@api/*": ["src/api-client/*"],
+        "@orders/*": ["src/order-management/*"],
+        "@machine/*": ["src/machine-scheduler/*"],
+        "@calculator/*": ["src/schedule-calculator/*"],
+        "@viewer/*": ["src/document-viewer/*"],
+        "@ui/*": ["src/ui-components/*"],
+        "@utils/*": ["src/utils/*"]
+      }
+    }
+  }

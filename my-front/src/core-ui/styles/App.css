@@ -1,0 +1,60 @@
+/* core-ui/src/styles/App.css */
+.app-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #1f2937, #111827);
+  color: #ffffff;
+}
+
+.content-wrapper {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}
+
+.loader {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 50vh;
+  color: #ffffff;
+  font-size: 1.5rem;
+}
+
+.loader::after {
+  content: '';
+  width: 1.5rem;
+  height: 1.5rem;
+  margin-left: 0.5rem;
+  border: 3px solid #6366F1;
+  border-radius: 50%;
+  border-top-color: transparent;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.card {
+  background-color: #1F2937;
+  border-radius: 0.5rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  margin-bottom: 1rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+}
+
+.page-title {
+  font-size: 1.875rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  color: #ffffff;
+  border-bottom: 2px solid #4F46E5;
+  padding-bottom: 0.5rem;
+  display: inline-block;
+}
